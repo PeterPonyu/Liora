@@ -7,9 +7,9 @@ import torch
 import tqdm
 
 
-class LiVAE(Env):
+class Liora(Env):
     """
-    LiVAE model for single-cell RNA-seq analysis.
+    Liora model for single-cell RNA-seq analysis.
     
     Combines Variational Autoencoder with:
     - Lorentz manifold regularization for geometric structure
@@ -22,8 +22,6 @@ class LiVAE(Env):
         Annotated data matrix containing raw counts
     layer : str, default='counts'
         Layer in adata.layers containing raw count data
-    percent : float, default=0.01
-        Fraction of data to use per batch
     recon : float, default=1.0
         Weight for primary reconstruction loss        
     irecon : float, default=0.0
@@ -57,6 +55,24 @@ class LiVAE(Env):
         Use adaptive normalization based on dataset statistics
     use_layer_norm : bool, default=True
         Use layer normalization for training stability
+    use_euclidean_manifold : bool, default=False
+        Use Euclidean manifold instead of Lorentz
+    use_ode : bool, default=False
+        Use Neural ODE regularization
+    vae_reg : float, default=0.5
+        Weight for VAE path in ODE mode
+    ode_reg : float, default=0.5
+        Weight for ODE path in ODE mode
+    train_size : float, default=0.7
+        Proportion of data for training
+    val_size : float, default=0.15
+        Proportion of data for validation
+    test_size : float, default=0.15
+        Proportion of data for testing
+    batch_size : int, default=128
+        Batch size for training
+    random_seed : int, default=42
+        Random seed for reproducibility
     device : torch.device, optional
         Device for training (defaults to CUDA if available)
     """
@@ -65,7 +81,6 @@ class LiVAE(Env):
         self,
         adata: AnnData,
         layer: str = 'counts',
-        percent: float = 0.01,
         recon: float = 1.0,
         irecon: float = 0.0,
         lorentz: float = 0.0,
@@ -83,6 +98,14 @@ class LiVAE(Env):
         adaptive_norm: bool = True,
         use_layer_norm: bool = True,
         use_euclidean_manifold: bool = False,
+        use_ode: bool = False,
+        vae_reg: float = 0.5,
+        ode_reg: float = 0.5,
+        train_size: float = 0.7,
+        val_size: float = 0.15,
+        test_size: float = 0.15,
+        batch_size: int = 128,
+        random_seed: int = 42,
         device: torch.device = None
     ):
         if device is None:
@@ -91,7 +114,6 @@ class LiVAE(Env):
         super().__init__(
             adata=adata,
             layer=layer,
-            percent=percent,
             recon=recon,
             irecon=irecon,
             lorentz=lorentz,
@@ -109,39 +131,92 @@ class LiVAE(Env):
             adaptive_norm=adaptive_norm,
             use_layer_norm=use_layer_norm,
             use_euclidean_manifold=use_euclidean_manifold,
+            use_ode=use_ode,
+            vae_reg=vae_reg,
+            ode_reg=ode_reg,
+            train_size=train_size,
+            val_size=val_size,
+            test_size=test_size,
+            batch_size=batch_size,
+            random_seed=random_seed,
             device=device
         )
-        
-    def fit(self, epochs: int = 1000):
+    
+    def fit(
+        self, 
+        epochs: int = 400,
+        patience: int = 25,
+        val_every: int = 5,
+        early_stop: bool = True,
+    ):
         """
-        Train the model.
+        Train model with epoch-based training and early stopping.
         
         Parameters
         ----------
-        epochs : int, default=1000
-            Number of training epochs
+        epochs : int, default=100
+            Maximum number of epochs
+        patience : int, default=20
+            Early stopping patience (epochs without improvement)
+        val_every : int, default=5
+            Validate every N epochs
+        early_stop : bool, default=True
+            Enable early stopping
             
         Returns
         -------
         self : LiVAE
             Trained model
         """
-        with tqdm.tqdm(total=epochs, desc='Training', ncols=140) as pbar:
-            for i in range(epochs):
-                data = self.load_data()
-                self.step(data)
+        with tqdm.tqdm(total=epochs, desc="Training", ncols=200) as pbar:
+            for epoch in range(epochs):
                 
-                if (i + 1) % 10 == 0:
-                    pbar.set_postfix({
-                        'Loss': f'{self.loss[-1][0]:.2f}',
-                        'ARI': f'{self.score[-1][0]:.2f}',
-                        'NMI': f'{self.score[-1][1]:.2f}',
-                        'ASW': f'{self.score[-1][2]:.2f}',
-                        'C_H': f'{self.score[-1][3]:.2f}',
-                        'D_B': f'{self.score[-1][4]:.2f}',
-                        'P_C': f'{self.score[-1][5]:.2f}'
-                    })
+                # Train for one epoch
+                train_loss = self.train_epoch()
+                
+                # Validate periodically
+                if (epoch + 1) % val_every == 0 or epoch == 0:
+                    val_loss, val_score = self.validate()
+                    if early_stop:
+                        # Check early stopping
+                        should_stop, improved = self.check_early_stopping(
+                            val_loss, patience
+                        )
+                        
+                        # Update progress bar
+                        pbar.set_postfix({
+                            "Train": f"{train_loss:.2f}",
+                            "Val": f"{val_loss:.2f}",
+                            "ARI": f"{val_score[0]:.2f}",
+                            "NMI": f"{val_score[1]:.2f}",
+                            "ASW": f"{val_score[2]:.2f}",
+                            "CAL": f"{val_score[3]:.2f}",
+                            "DAV": f"{val_score[4]:.2f}",
+                            "COR": f"{val_score[5]:.2f}",
+                            "Best": f"{self.best_val_loss:.2f}",
+                            "Pat": f"{self.patience_counter}/{patience}",
+                            "✓" if improved else "✗": ""
+                        })
+                        
+                        if should_stop:
+                            print(f"\n\nEarly stopping triggered at epoch {epoch + 1}")
+                            print(f"Best validation loss: {self.best_val_loss:.4f}")
+                            self.load_best_model()
+                            break
+                    else:
+                        # Update progress bar without early stopping
+                        pbar.set_postfix({
+                            "Train": f"{train_loss:.2f}",
+                            "Val": f"{val_loss:.2f}",
+                            "ARI": f"{val_score[0]:.2f}",
+                            "NMI": f"{val_score[1]:.2f}",
+                            "ASW": f"{val_score[2]:.2f}",
+                            "CAL": f"{val_score[3]:.2f}",
+                            "DAV": f"{val_score[4]:.2f}",
+                            "COR": f"{val_score[5]:.2f}",
+                        })
                 pbar.update(1)
+        
         return self
     
     def get_latent(self):
@@ -155,6 +230,17 @@ class LiVAE(Env):
         """
         return self.take_latent(self.X_norm)
     
+    def get_test_latent(self):
+        """
+        Get latent representation from test set only.
+        
+        Returns
+        -------
+        latent : ndarray
+            Test set latent representations
+        """
+        return self.take_latent(self.X_test_norm)
+    
     def get_bottleneck(self):
         """
         Get information bottleneck representations.
@@ -166,5 +252,6 @@ class LiVAE(Env):
         """
         x = torch.tensor(self.X_norm, dtype=torch.float32).to(self.device)
         with torch.no_grad():
-            _, _, _, _, le, _, _, _, _, _, _ = self.nn(x)
+            outputs = self.nn(x)
+            le = outputs[4]  # Information bottleneck encoding
         return le.cpu().numpy()

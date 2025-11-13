@@ -1,5 +1,5 @@
-from .agent import LiVAE
+from .agent import Liora
 
-__all__ = ['LiVAE']
+__all__ = ['Liora']
 
-__version__ = '0.2.0'
+__version__ = '0.3.0'
