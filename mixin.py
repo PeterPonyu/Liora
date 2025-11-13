@@ -1,11 +1,12 @@
-
-"""Mixin classes for different loss functions and metrics."""
+# ============================================================================
+# mixin.py - Loss Functions and Metrics
+# ============================================================================
 
 import torch
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import (
-    adjusted_mutual_info_score,
+    adjusted_rand_score,
     normalized_mutual_info_score,
     silhouette_score,
     calinski_harabasz_score,
@@ -14,10 +15,14 @@ from sklearn.metrics import (
 
 
 class scviMixin:
-    """Count-based likelihood functions for scRNA-seq."""
+    """Count-based likelihood functions for single-cell RNA-seq data."""
     
     def _normal_kl(self, mu1, lv1, mu2, lv2):
-        """KL divergence between two Gaussians."""
+        """
+        KL divergence between two diagonal Gaussians.
+        
+        KL(N(mu1, exp(lv1)) || N(mu2, exp(lv2)))
+        """
         v1 = torch.exp(lv1)
         v2 = torch.exp(lv2)
         lstd1 = lv1 / 2.0
@@ -25,7 +30,11 @@ class scviMixin:
         return lstd2 - lstd1 + (v1 + (mu1 - mu2) ** 2) / (2.0 * v2) - 0.5
     
     def _log_nb(self, x, mu, theta, eps=1e-8):
-        """Negative Binomial log-likelihood."""
+        """
+        Negative Binomial log-likelihood.
+        
+        Parameterized by mean mu and inverse dispersion theta.
+        """
         log_theta_mu_eps = torch.log(theta + mu + eps)
         return (
             theta * (torch.log(theta + eps) - log_theta_mu_eps)
@@ -36,7 +45,11 @@ class scviMixin:
         )
     
     def _log_zinb(self, x, mu, theta, pi, eps=1e-8):
-        """Zero-Inflated Negative Binomial log-likelihood."""
+        """
+        Zero-Inflated Negative Binomial log-likelihood.
+        
+        Mixture of point mass at zero and NB distribution.
+        """
         pi = torch.sigmoid(pi)
         log_nb = self._log_nb(x, mu, theta, eps)
         case_zero = torch.log(pi + (1 - pi) * torch.exp(log_nb) + eps)
@@ -48,7 +61,11 @@ class scviMixin:
         return x * torch.log(mu + eps) - mu - torch.lgamma(x + 1)
     
     def _log_zip(self, x, mu, pi, eps=1e-8):
-        """Zero-Inflated Poisson log-likelihood."""
+        """
+        Zero-Inflated Poisson log-likelihood.
+        
+        Mixture of point mass at zero and Poisson distribution.
+        """
         pi = torch.sigmoid(pi)
         case_zero = torch.log(pi + (1 - pi) * torch.exp(-mu) + eps)
         case_nonzero = torch.log(1 - pi + eps) + self._log_poisson(x, mu, eps)
@@ -56,17 +73,21 @@ class scviMixin:
 
 
 class betatcMixin:
-    """β-TC-VAE total correlation loss."""
+    """β-TC-VAE total correlation loss for disentanglement."""
     
     def _betatc_compute_gaussian_log_density(self, samples, mean, log_var):
-        """Gaussian log density."""
+        """Log density of Gaussian distribution."""
         normalization = torch.log(torch.tensor(2 * np.pi))
         inv_sigma = torch.exp(-log_var)
         tmp = samples - mean
         return -0.5 * (tmp * tmp * inv_sigma + log_var + normalization)
     
     def _betatc_compute_total_correlation(self, z_sampled, z_mean, z_logvar):
-        """Total correlation term."""
+        """
+        Total correlation: KL(q(z) || prod_j q(z_j))
+        
+        Measures statistical dependence between latent dimensions.
+        """
         log_qz_prob = self._betatc_compute_gaussian_log_density(
             z_sampled.unsqueeze(1),
             z_mean.unsqueeze(0),
@@ -81,7 +102,11 @@ class infoMixin:
     """InfoVAE maximum mean discrepancy loss."""
     
     def _compute_mmd(self, z_posterior, z_prior):
-        """Maximum mean discrepancy."""
+        """
+        Maximum Mean Discrepancy with RBF kernel.
+        
+        Measures distance between posterior and prior distributions.
+        """
         mean_pz_pz = self._compute_kernel_mean(
             self._compute_kernel(z_prior, z_prior), unbiased=True
         )
@@ -97,12 +122,13 @@ class infoMixin:
         """Compute mean of kernel matrix."""
         N = kernel.shape[0]
         if unbiased:
+            # Exclude diagonal for unbiased estimate
             sum_kernel = kernel.sum() - torch.diagonal(kernel).sum()
             return sum_kernel / (N * (N - 1))
         return kernel.mean()
     
     def _compute_kernel(self, z0, z1):
-        """RBF kernel."""
+        """RBF (Gaussian) kernel."""
         batch_size, z_size = z0.shape
         z0 = z0.unsqueeze(1).expand(batch_size, batch_size, z_size)
         z1 = z1.unsqueeze(0).expand(batch_size, batch_size, z_size)
@@ -114,41 +140,67 @@ class dipMixin:
     """Disentangled Inferred Prior (DIP-VAE) loss."""
     
     def _dip_loss(self, q_m, q_s):
-        """DIP regularization on covariance matrix."""
+        """
+        DIP regularization on posterior covariance matrix.
+        
+        Encourages diagonal covariance (independence) and unit variance.
+        """
         cov_matrix = self._dip_cov_matrix(q_m, q_s)
         cov_diag = torch.diagonal(cov_matrix)
         cov_off_diag = cov_matrix - torch.diag(cov_diag)
+        
+        # Penalize deviation from identity covariance
         dip_loss_d = torch.sum((cov_diag - 1) ** 2)
         dip_loss_od = torch.sum(cov_off_diag ** 2)
+        
         return 10 * dip_loss_d + 5 * dip_loss_od
     
     def _dip_cov_matrix(self, q_m, q_s):
-        """Covariance matrix of approximate posterior."""
+        """Covariance matrix of variational posterior."""
         cov_q_mean = torch.cov(q_m.T)
         E_var = torch.mean(torch.exp(q_s), dim=0)
         return cov_q_mean + torch.diag(E_var)
 
 
 class envMixin:
-    """Environment mixin for clustering and metrics."""
+    """Environment mixin for clustering and evaluation metrics."""
     
-    def _calc_score(self, latent):
-        """Calculate clustering metrics."""
-        labels = KMeans(n_clusters=latent.shape[1]).fit_predict(latent)
-        return self._metrics(latent, labels)
-    
-    def _metrics(self, latent, labels):
-        """Compute all metrics."""
-        return (
-            adjusted_mutual_info_score(self.labels[self.idx], labels),
-            normalized_mutual_info_score(self.labels[self.idx], labels),
-            silhouette_score(latent, labels),
-            calinski_harabasz_score(latent, labels),
-            davies_bouldin_score(latent, labels),
-            self._calc_corr(latent)
-        )
+    def _calc_score_with_labels(self, latent, labels):
+        """
+        Compute clustering metrics against ground truth labels.
+        
+        Parameters
+        ----------
+        latent : ndarray
+            Latent representations
+        labels : ndarray
+            Ground truth labels
+        
+        Returns
+        -------
+        scores : tuple
+            (ARI, NMI, Silhouette, Calinski-Harabasz, Davies-Bouldin, Correlation)
+        """
+        # Perform KMeans clustering
+        n_clusters = len(np.unique(labels))
+        pred_labels = KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit_predict(latent)
+        
+        # Compute metrics
+        ari = adjusted_rand_score(labels, pred_labels)
+        nmi = normalized_mutual_info_score(labels, pred_labels)
+        asw = silhouette_score(latent, pred_labels)
+        cal = calinski_harabasz_score(latent, pred_labels)
+        dav = davies_bouldin_score(latent, pred_labels)
+        cor = self._calc_corr(latent)
+        
+        return (ari, nmi, asw, cal, dav, cor)
     
     def _calc_corr(self, latent):
-        """Average correlation per dimension (original metric)."""
-        acorr = abs(np.corrcoef(latent.T))
+        """
+        Average absolute correlation per dimension.
+        
+        Measures linear dependencies between latent dimensions.
+        """
+        acorr = np.abs(np.corrcoef(latent.T))
+        # Subtract 1 to exclude self-correlation
         return acorr.sum(axis=1).mean().item() - 1

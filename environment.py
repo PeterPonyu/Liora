@@ -1,5 +1,6 @@
-
-"""Environment for LiVAE model training and evaluation."""
+# ============================================================================
+# environment.py - Data Loading and Preprocessing
+# ============================================================================
 
 from .model import LioraModel
 from .mixin import envMixin
@@ -13,21 +14,26 @@ from torch.utils.data import DataLoader, TensorDataset
 
 def is_raw_counts(X, threshold=0.5):
     """
-    Check if data matrix contains raw integer counts.
+    Heuristically determine if data contains raw integer counts.
+    
+    Checks for:
+    - Predominantly integer-like values
+    - No negative values
+    - Low proportion of values in (0, 1) range
     
     Parameters
     ----------
-    X : array-like
-        Data matrix (sparse or dense)
-    threshold : float
-        Minimum proportion of integer-like values
-        
+    X : array-like (dense or sparse)
+        Data matrix to check
+    threshold : float, default=0.5
+        Minimum proportion of integer-like values required
+    
     Returns
     -------
-    bool
+    is_raw : bool
         True if data appears to be raw counts
     """
-    # Sample data
+    # Sample for efficiency
     if issparse(X):
         sample_data = X.data[:min(10000, len(X.data))]
     else:
@@ -36,23 +42,36 @@ def is_raw_counts(X, threshold=0.5):
             len(flat_data), min(10000, len(flat_data)), replace=False
         )]
     
+    # Remove zeros
     sample_data = sample_data[sample_data > 0]
     if len(sample_data) == 0:
         return False
     
-    # Check for normalized/log-transformed data indicators
+    # Check for normalized/log-transformed indicators
     if np.mean((sample_data > 0) & (sample_data < 1)) > 0.1:
         return False
     if np.any(sample_data < 0):
         return False
     
-    # Check for integer-like values
+    # Check integer-like proportion
     integer_like = np.abs(sample_data - np.round(sample_data)) < 1e-6
     return np.mean(integer_like) >= threshold
 
 
 def compute_dataset_stats(X):
-    """Compute statistics for adaptive normalization."""
+    """
+    Compute statistics for adaptive normalization strategy.
+    
+    Parameters
+    ----------
+    X : array-like
+        Data matrix
+    
+    Returns
+    -------
+    stats : dict
+        Dictionary with keys: sparsity, lib_size_mean, lib_size_std, max_val
+    """
     X_dense = X.toarray() if issparse(X) else X
     
     return {
@@ -64,7 +83,17 @@ def compute_dataset_stats(X):
 
 
 class Env(LioraModel, envMixin):
-    """Environment handling data loading and preprocessing."""
+    """
+    Environment for Liora model handling data preprocessing and training loops.
+    
+    Responsibilities:
+    - Load and validate raw count data from AnnData
+    - Apply adaptive normalization
+    - Create train/validation/test splits
+    - Manage PyTorch DataLoaders
+    - Implement training and validation loops
+    - Track metrics and early stopping
+    """
     
     def __init__(
         self,
@@ -98,16 +127,16 @@ class Env(LioraModel, envMixin):
         random_seed=42,
         **kwargs
     ):
-        # Store split parameters
+        # Store configuration
         self.train_size = train_size
         self.val_size = val_size
         self.test_size = test_size
         self.batch_size = batch_size
         self.random_seed = random_seed
-        
-        # Register data first
         self.loss_type = loss_type
         self.adaptive_norm = adaptive_norm
+        
+        # Register and preprocess data
         self._register_anndata(adata, layer, latent_dim)
         
         # Initialize model
@@ -136,21 +165,31 @@ class Env(LioraModel, envMixin):
         )
         
         # Initialize tracking
-        self.score = []
         self.train_losses = []
         self.val_losses = []
         self.val_scores = []
         
-        # Early stopping parameters
+        # Early stopping state
         self.best_val_loss = float('inf')
         self.best_model_state = None
         self.patience_counter = 0
     
     def _register_anndata(self, adata, layer: str, latent_dim: int):
-        """Register and preprocess AnnData object with train/val/test splits."""
-        # Get raw counts
+        """
+        Register AnnData object and preprocess with adaptive normalization.
+        
+        Steps:
+        1. Extract and validate raw counts
+        2. Compute dataset statistics
+        3. Apply adaptive log-normalization with clipping
+        4. Generate or extract cell type labels
+        5. Create train/val/test splits
+        6. Build PyTorch DataLoaders
+        """
+        # Extract raw counts
         X = adata.layers[layer]
         
+        # Validate that data is raw counts
         if not is_raw_counts(X):
             raise ValueError(
                 f"Layer '{layer}' does not contain raw counts. "
@@ -164,46 +203,47 @@ class Env(LioraModel, envMixin):
         stats = compute_dataset_stats(X)
         print(f"Dataset statistics:")
         print(f"  Cells: {X.shape[0]:,}, Genes: {X.shape[1]:,}")
-        print(f"  Sparsity: {stats['sparsity']:.2f}, "
+        print(f"  Sparsity: {stats['sparsity']:.2%}, "
               f"Lib size: {stats['lib_size_mean']:.0f}±{stats['lib_size_std']:.0f}, "
               f"Max value: {stats['max_val']:.0f}")
         
-        # Adaptive normalization
+        # Log-transform
         X_log = np.log1p(X)
         
+        # Adaptive normalization based on dataset characteristics
         if self.adaptive_norm:
             if stats['sparsity'] > 0.95:
-                print("  → Aggressive clipping for sparse data")
+                print("  → High sparsity: applying conservative clipping")
                 X_norm = np.clip(X_log, -5, 5).astype(np.float32)
             elif stats['lib_size_std'] / stats['lib_size_mean'] > 2.0:
-                print("  → Per-cell standardization for high variance")
+                print("  → High variance: applying per-cell standardization")
                 cell_means = X_log.mean(axis=1, keepdims=True)
                 cell_stds = X_log.std(axis=1, keepdims=True) + 1e-6
                 X_norm = np.clip((X_log - cell_means) / cell_stds, -10, 10).astype(np.float32)
             elif stats['max_val'] > 10000:
-                print("  → Scaled normalization for extreme values")
+                print("  → Extreme values: applying scaled normalization")
                 scale = min(1.0, 10.0 / X_log.max())
                 X_norm = np.clip(X_log * scale, -10, 10).astype(np.float32)
             else:
+                print("  → Standard normalization")
                 X_norm = np.clip(X_log, -10, 10).astype(np.float32)
         else:
             X_norm = np.clip(X_log, -10, 10).astype(np.float32)
         
-        # Validate
+        # Validate normalization
         if np.isnan(X_norm).any():
-            raise ValueError(f"NaN detected in normalized data")
+            raise ValueError("NaN detected in normalized data")
         if np.isinf(X_norm).any():
-            raise ValueError(f"Inf detected in normalized data")
+            raise ValueError("Inf detected in normalized data")
         
         self.n_obs, self.n_var = adata.shape
         
-        # Generate labels for evaluation
+        # Generate or extract labels for evaluation
         if 'cell_type' in adata.obs.columns:
-            # Use actual cell type labels if available
             self.labels = LabelEncoder().fit_transform(adata.obs['cell_type'])
-            print(f"  Using cell_type labels: {len(np.unique(self.labels))} types")
+            print(f"  Using 'cell_type' labels: {len(np.unique(self.labels))} types")
         else:
-            # Use KMeans as pseudo-labels for evaluation
+            # Use KMeans pseudo-labels for unsupervised evaluation
             try:
                 self.labels = KMeans(
                     n_clusters=latent_dim,
@@ -213,7 +253,7 @@ class Env(LioraModel, envMixin):
                 ).fit_predict(X_norm)
                 print(f"  Generated KMeans pseudo-labels: {latent_dim} clusters")
             except Exception as e:
-                print(f"  Warning: KMeans failed, using random labels")
+                print(f"  Warning: KMeans failed ({e}), using random labels")
                 self.labels = np.random.randint(0, latent_dim, size=self.n_obs)
         
         # Create train/val/test splits
@@ -239,6 +279,7 @@ class Env(LioraModel, envMixin):
         self.X_norm = X_norm
         self.X_raw = X_raw
         
+        # Split labels
         self.labels_train = self.labels[self.train_idx]
         self.labels_val = self.labels[self.val_idx]
         self.labels_test = self.labels[self.test_idx]
@@ -248,11 +289,11 @@ class Env(LioraModel, envMixin):
         print(f"  Val:   {len(self.val_idx):,} cells ({len(self.val_idx)/self.n_obs*100:.1f}%)")
         print(f"  Test:  {len(self.test_idx):,} cells ({len(self.test_idx)/self.n_obs*100:.1f}%)")
         
-        # Create PyTorch DataLoaders
+        # Create DataLoaders
         self._create_dataloaders()
     
     def _create_dataloaders(self):
-        """Create PyTorch DataLoaders for train/val/test sets."""
+        """Create PyTorch DataLoaders for efficient mini-batch training."""
         # Convert to tensors
         X_train_norm_tensor = torch.FloatTensor(self.X_train_norm)
         X_train_raw_tensor = torch.FloatTensor(self.X_train_raw)
@@ -271,7 +312,7 @@ class Env(LioraModel, envMixin):
             train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            drop_last=True  # Drop last incomplete batch
+            drop_last=True  # Drop incomplete batches for stability
         )
         
         self.val_loader = DataLoader(
@@ -288,27 +329,48 @@ class Env(LioraModel, envMixin):
             drop_last=False
         )
         
-        print(f"  Batch size: {self.batch_size}, Batches per epoch: {len(self.train_loader)}")
+        print(f"  Batch size: {self.batch_size}, Batches/epoch: {len(self.train_loader)}")
     
     def train_epoch(self):
-        """Train for one complete epoch through training data."""
-        self.nn.train()  # Set model to training mode
+        """
+        Train for one complete pass through training data.
+        
+        Returns
+        -------
+        avg_train_loss : float
+            Average training loss for this epoch
+        """
+        self.nn.train()
         epoch_losses = []
         
         for batch_norm, batch_raw in self.train_loader:
             batch_norm = batch_norm.to(self.device)
             batch_raw = batch_raw.to(self.device)
+            
+            # Perform one gradient update
             self.update(batch_norm.cpu().numpy(), batch_raw.cpu().numpy())
-            epoch_losses.append(self.loss[-1][0])  # Get last total loss
+            
+            # Track loss (last element in loss list)
+            if len(self.loss) > 0:
+                epoch_losses.append(self.loss[-1][0])
         
-        avg_train_loss = np.mean(epoch_losses)
+        avg_train_loss = np.mean(epoch_losses) if epoch_losses else 0.0
         self.train_losses.append(avg_train_loss)
         
         return avg_train_loss
     
     def validate(self):
-        """Evaluate on validation set."""
-        self.nn.eval()  # Set model to evaluation mode
+        """
+        Evaluate model on validation set.
+        
+        Returns
+        -------
+        avg_val_loss : float
+            Average validation loss
+        val_score : tuple
+            Validation metrics (ARI, NMI, ASW, CAL, DAV, COR)
+        """
+        self.nn.eval()
         val_losses = []
         all_latents = []
         
@@ -317,19 +379,19 @@ class Env(LioraModel, envMixin):
                 batch_norm = batch_norm.to(self.device)
                 batch_raw = batch_raw.to(self.device)
                 
-                # Forward pass (compute loss without updating)
+                # Compute loss without gradient updates
                 loss_value = self._compute_loss_only(batch_norm, batch_raw)
                 val_losses.append(loss_value)
                 
-                # Get latent representations
+                # Collect latent representations
                 latent = self.take_latent(batch_norm.cpu().numpy())
                 all_latents.append(latent)
         
         # Average validation loss
-        avg_val_loss = np.mean(val_losses)
+        avg_val_loss = np.mean(val_losses) if val_losses else float('inf')
         self.val_losses.append(avg_val_loss)
         
-        # Compute metrics on validation latents
+        # Compute clustering metrics on latent space
         all_latents = np.concatenate(all_latents, axis=0)
         val_score = self._calc_score_with_labels(all_latents, self.labels_val)
         self.val_scores.append(val_score)
@@ -337,7 +399,14 @@ class Env(LioraModel, envMixin):
         return avg_val_loss, val_score
     
     def _compute_loss_only(self, states_norm, states_raw):
-        """Compute loss without gradient updates (for validation)."""
+        """
+        Compute total loss without backpropagation (for validation).
+        
+        Returns
+        -------
+        total_loss : float
+            Scalar loss value
+        """
         states_norm = states_norm.to(self.device)
         states_raw = states_raw.to(self.device)
         
@@ -347,11 +416,11 @@ class Env(LioraModel, envMixin):
              dropout_x, dropout_xl, q_z_ode, pred_x_ode, dropout_x_ode,
              x_sorted, t) = self.nn(states_norm)
             
-            # ODE divergence loss
+            # ODE divergence
             import torch.nn.functional as F
             qz_div = F.mse_loss(q_z, q_z_ode, reduction="none").sum(-1).mean()
             
-            # Reconstruction losses (both paths)
+            # Reconstruction (both paths)
             recon_loss = self.recon * self._compute_reconstruction_loss(
                 x_sorted, pred_x, dropout_x
             )
@@ -381,17 +450,13 @@ class Env(LioraModel, envMixin):
                 if not torch.isnan(dist).any():
                     geometric_loss = self.lorentz * dist.mean()
         
-        # Information bottleneck reconstruction
+        # Information bottleneck
         irecon_loss = torch.tensor(0.0, device=self.device)
         if self.irecon > 0:
-            if self.use_ode:
-                irecon_loss = self.irecon * self._compute_reconstruction_loss(
-                    x_sorted, pred_xl, dropout_xl
-                )
-            else:
-                irecon_loss = self.irecon * self._compute_reconstruction_loss(
-                    states_raw, pred_xl, dropout_xl
-                )
+            target = x_sorted if self.use_ode else states_raw
+            irecon_loss = self.irecon * self._compute_reconstruction_loss(
+                target, pred_xl, dropout_xl
+            )
         
         # KL divergence
         kl_div = self.beta * self._normal_kl(
@@ -413,43 +478,43 @@ class Env(LioraModel, envMixin):
     
     def check_early_stopping(self, val_loss, patience=25):
         """
-        Check if training should stop early.
+        Check if training should stop based on validation loss plateau.
         
         Parameters
         ----------
         val_loss : float
             Current validation loss
         patience : int
-            Number of epochs to wait before stopping
-            
+            Number of epochs to wait for improvement
+        
         Returns
         -------
         should_stop : bool
-            Whether training should stop
+            Whether to terminate training
         improved : bool
-            Whether validation loss improved
+            Whether this epoch improved validation loss
         """
         if val_loss < self.best_val_loss:
-            # Improvement
+            # Improvement: save model and reset counter
             self.best_val_loss = val_loss
             self.best_model_state = {
                 k: v.cpu().clone() for k, v in self.nn.state_dict().items()
             }
             self.patience_counter = 0
-            return False, True  # Continue training, improved
+            return False, True
         else:
-            # No improvement
+            # No improvement: increment counter
             self.patience_counter += 1
             
             if self.patience_counter >= patience:
-                return True, False  # Stop training, not improved
+                return True, False  # Stop training
             else:
-                return False, False  # Continue training, not improved
+                return False, False  # Continue training
     
     def load_best_model(self):
-        """Load the best model from early stopping checkpoint."""
+        """Restore model to best validation checkpoint."""
         if self.best_model_state is not None:
             self.nn.load_state_dict(self.best_model_state)
-            print(f"Loaded best model with validation loss: {self.best_val_loss:.4f}")
+            print(f"Loaded best model (val_loss={self.best_val_loss:.4f})")
         else:
-            print("Warning: No best model state found!")
+            print("Warning: No best model state available")

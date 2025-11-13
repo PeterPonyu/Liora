@@ -1,5 +1,6 @@
-
-"""Core Liora model with loss computation and ODE support."""
+# ============================================================================
+# model.py - Core Model with Loss Computation
+# ============================================================================
 
 import torch
 import torch.nn.functional as F
@@ -13,14 +14,15 @@ from .utils import lorentz_distance
 
 class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
     """
-    Liora model with multiple regularization losses and optional ODE regularization.
+    Core Liora model implementing loss computation and optimization.
     
-    Combines standard VAE with:
-    - Lorentz manifold regularization
-    - Information bottleneck
-    - Disentanglement losses (DIP, β-TC)
-    - MMD regularization
-    - Optional Neural ODE dynamics
+    Combines multiple regularization objectives:
+    - Reconstruction loss (NB/ZINB/Poisson/ZIP)
+    - KL divergence (β-VAE)
+    - Lorentz/Euclidean manifold regularization
+    - Information bottleneck reconstruction
+    - Disentanglement losses (DIP, β-TC, MMD)
+    - Neural ODE regularization (optional)
     """
     
     def __init__(
@@ -48,6 +50,7 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
         ode_reg=0.5,
         **kwargs
     ):
+        # Store hyperparameters
         self.recon = recon
         self.irecon = irecon
         self.lorentz = lorentz
@@ -63,6 +66,7 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
         self.ode_reg = ode_reg
         self.device = device
         
+        # Initialize neural network
         self.nn = VAE(
             state_dim,
             hidden_dim,
@@ -72,29 +76,42 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
             loss_type=loss_type,
             use_layer_norm=use_layer_norm,
             use_euclidean_manifold=use_euclidean_manifold,
-            use_ode=use_ode
-        ).to(device)
+            use_ode=use_ode,
+            device=device
+        )
         
+        # Initialize optimizer
         self.nn_optimizer = optim.Adam(self.nn.parameters(), lr=lr)
+        
+        # Loss tracking
         self.loss = []
     
     @torch.no_grad()
     def take_latent(self, state):
-        """Extract latent representation (combined VAE + ODE if applicable)."""
+        """
+        Extract latent representation from normalized input.
+        
+        In ODE mode, returns weighted combination of VAE and ODE paths.
+        """
         state = torch.tensor(state, dtype=torch.float32).to(self.device)
         
         if self.use_ode:
             q_z, q_m, q_s, n, t = self.nn.encoder(state)
-            t = t.cpu()
+            
+            # Sort by time and solve ODE
+            t_cpu = t.cpu().numpy()
             t_sorted, sort_idx, sort_idxr = np.unique(
-                t, return_index=True, return_inverse=True
+                t_cpu, return_index=True, return_inverse=True
             )
-            t_sorted = torch.tensor(t_sorted)
+            t_sorted = torch.tensor(t_sorted, dtype=torch.float32)
             q_z_sorted = q_z[sort_idx]
             z0 = q_z_sorted[0]
             q_z_ode = self.nn.solve_ode(self.nn.ode_solver, z0, t_sorted)
             q_z_ode = q_z_ode[sort_idxr]
-            return (self.vae_reg * q_z + self.ode_reg * q_z_ode).cpu().numpy()
+            
+            # Weighted combination
+            combined = self.vae_reg * q_z + self.ode_reg * q_z_ode
+            return combined.cpu().numpy()
         else:
             q_z, _, _, _ = self.nn.encoder(state)
             return q_z.cpu().numpy()
@@ -106,29 +123,34 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
         
         if self.use_ode:
             q_z, q_m, q_s, n, t = self.nn.encoder(state)
-            t = t.cpu()
+            
+            # ODE path
+            t_cpu = t.cpu().numpy()
             t_sorted, sort_idx, sort_idxr = np.unique(
-                t, return_index=True, return_inverse=True
+                t_cpu, return_index=True, return_inverse=True
             )
-            t_sorted = torch.tensor(t_sorted)
+            t_sorted = torch.tensor(t_sorted, dtype=torch.float32)
             q_z_sorted = q_z[sort_idx]
             z0 = q_z_sorted[0]
             q_z_ode = self.nn.solve_ode(self.nn.ode_solver, z0, t_sorted)
             q_z_ode = q_z_ode[sort_idxr]
             
+            # Bottleneck on both paths
             le = self.nn.latent_encoder(q_z)
             le_ode = self.nn.latent_encoder(q_z_ode)
-            return (self.vae_reg * le + self.ode_reg * le_ode).cpu().numpy()
+            
+            combined = self.vae_reg * le + self.ode_reg * le_ode
+            return combined.cpu().numpy()
         else:
             outputs = self.nn(state)
-            le = outputs[4]  # Information bottleneck encoding
+            le = outputs[4]
             return le.cpu().numpy()
     
     @torch.no_grad()
     def take_time(self, state):
-        """Extract predicted time values (ODE mode only)."""
+        """Extract predicted pseudotime (ODE mode only)."""
         if not self.use_ode:
-            raise ValueError("take_time() is only available in ODE mode")
+            raise ValueError("take_time() requires use_ode=True")
         
         state = torch.tensor(state, dtype=torch.float32).to(self.device)
         _, _, _, _, t = self.nn.encoder(state)
@@ -136,32 +158,55 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
     
     @torch.no_grad()
     def take_grad(self, state):
-        """Extract ODE gradients (ODE mode only)."""
+        """Extract ODE velocity field (ODE mode only)."""
         if not self.use_ode:
-            raise ValueError("take_grad() is only available in ODE mode")
+            raise ValueError("take_grad() requires use_ode=True")
         
         state = torch.tensor(state, dtype=torch.float32).to(self.device)
         q_z, q_m, q_s, n, t = self.nn.encoder(state)
-        grads = self.nn.ode_solver(t, q_z.cpu()).numpy()
-        return grads
+        grads = self.nn.ode_solver(t, q_z)
+        return grads.cpu().numpy()
     
     @torch.no_grad()
     def take_transition(self, state, top_k: int = 30):
-        """Compute transition matrix based on ODE dynamics."""
+        """
+        Compute cell-to-cell transition matrix from ODE dynamics.
+        
+        Parameters
+        ----------
+        state : ndarray
+            Normalized gene expression
+        top_k : int
+            Number of nearest neighbors to retain per cell
+        
+        Returns
+        -------
+        transition_matrix : ndarray
+            Sparse transition probability matrix
+        """
         if not self.use_ode:
-            raise ValueError("take_transition() is only available in ODE mode")
+            raise ValueError("take_transition() requires use_ode=True")
         
         state = torch.tensor(state, dtype=torch.float32).to(self.device)
         q_z, q_m, q_s, n, t = self.nn.encoder(state)
-        grads = self.nn.ode_solver(t, q_z.cpu()).numpy()
+        
+        # Compute velocity
+        grads = self.nn.ode_solver(t, q_z).cpu().numpy()
         z_latent = q_z.cpu().numpy()
+        
+        # Predict future state
         z_future = z_latent + 1e-2 * grads
+        
+        # Compute similarity
         distances = pairwise_distances(z_latent, z_future)
         sigma = np.median(distances)
         similarity = np.exp(-(distances**2) / (2 * sigma**2))
+        
+        # Normalize to probabilities
         transition_matrix = similarity / similarity.sum(axis=1, keepdims=True)
-
-        def sparsify_transitions(trans_matrix, top_k=top_k):
+        
+        # Sparsify by keeping top-k transitions
+        def sparsify_transitions(trans_matrix, top_k):
             n_cells = trans_matrix.shape[0]
             sparse_trans = np.zeros_like(trans_matrix)
             for i in range(n_cells):
@@ -169,16 +214,21 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
                 sparse_trans[i, top_indices] = trans_matrix[i, top_indices]
                 sparse_trans[i] /= sparse_trans[i].sum()
             return sparse_trans
-
-        transition_matrix = sparsify_transitions(transition_matrix)
+        
+        transition_matrix = sparsify_transitions(transition_matrix, top_k)
         return transition_matrix
     
     def _compute_reconstruction_loss(self, x_raw, pred_x, dropout_x):
-        """Compute reconstruction loss based on likelihood type."""
-        # Scale predictions by library size
+        """
+        Compute reconstruction loss with count-appropriate likelihood.
+        
+        Automatically scales predictions by library size.
+        """
+        # Library size normalization
         lib_size = torch.clamp(x_raw.sum(dim=-1, keepdim=True), min=1.0)
         pred_x = pred_x * lib_size
         
+        # Select likelihood function
         if self.loss_type == 'nb':
             disp = torch.exp(self.nn.decoder.disp)
             return -self._log_nb(x_raw, pred_x, disp).sum(dim=-1).mean()
@@ -193,7 +243,11 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
             raise ValueError(f"Unknown loss_type: {self.loss_type}")
     
     def update(self, states_norm, states_raw):
-        """Perform one gradient update."""
+        """
+        Perform one gradient descent step.
+        
+        Computes all loss terms, backpropagates, and updates parameters.
+        """
         states_norm = torch.tensor(states_norm, dtype=torch.float32).to(self.device)
         states_raw = torch.tensor(states_raw, dtype=torch.float32).to(self.device)
         
@@ -202,16 +256,17 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
             print("Warning: Invalid input data, skipping batch")
             return
         
-        # Forward pass (different unpacking for ODE vs non-ODE)
+        # Forward pass
         if self.use_ode:
+            # ODE mode: additional outputs for trajectory regularization
             (q_z, q_m, q_s, pred_x, le, ld, pred_xl, z_manifold, ld_manifold,
              dropout_x, dropout_xl, q_z_ode, pred_x_ode, dropout_x_ode,
              x_sorted, t) = self.nn(states_norm)
             
-            # ODE divergence loss (key ODE regularization)
+            # ODE consistency loss
             qz_div = F.mse_loss(q_z, q_z_ode, reduction="none").sum(-1).mean()
             
-            # Reconstruction losses (both VAE and ODE paths)
+            # Reconstruction on sorted data (both paths)
             recon_loss = self.recon * self._compute_reconstruction_loss(
                 x_sorted, pred_x, dropout_x
             )
@@ -219,92 +274,82 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
                 x_sorted, pred_x_ode, dropout_x_ode
             )
             
-            # Geometric regularization (only for non-ODE paths)
-            geometric_loss = torch.tensor(0.0, device=self.device)
-            if self.lorentz > 0:
-                if not (torch.isnan(z_manifold).any() or torch.isnan(ld_manifold).any()):
-                    if self.use_euclidean_manifold:
-                        from .utils import euclidean_distance
-                        dist = euclidean_distance(z_manifold, ld_manifold)
-                    else:
-                        dist = lorentz_distance(z_manifold, ld_manifold)
-                    
-                    if not torch.isnan(dist).any():
-                        geometric_loss = self.lorentz * dist.mean()
-            
-            # Information bottleneck reconstruction (both paths)
+            # Information bottleneck
             irecon_loss = torch.tensor(0.0, device=self.device)
             if self.irecon > 0:
                 irecon_loss = self.irecon * self._compute_reconstruction_loss(
                     x_sorted, pred_xl, dropout_xl
                 )
-        
         else:
-            # Non-ODE forward pass
+            # Standard VAE mode
             q_z, q_m, q_s, pred_x, le, ld, pred_xl, z_manifold, ld_manifold, dropout_x, dropout_xl = \
                 self.nn(states_norm)
             
             qz_div = torch.tensor(0.0, device=self.device)
             
-            # Reconstruction loss
+            # Reconstruction
             recon_loss = self.recon * self._compute_reconstruction_loss(
                 states_raw, pred_x, dropout_x
             )
             
-            # Geometric regularization
-            geometric_loss = torch.tensor(0.0, device=self.device)
-            if self.lorentz > 0:
-                if not (torch.isnan(z_manifold).any() or torch.isnan(ld_manifold).any()):
-                    if self.use_euclidean_manifold:
-                        from .utils import euclidean_distance
-                        dist = euclidean_distance(z_manifold, ld_manifold)
-                    else:
-                        dist = lorentz_distance(z_manifold, ld_manifold)
-                    
-                    if not torch.isnan(dist).any():
-                        geometric_loss = self.lorentz * dist.mean()
-            
-            # Information bottleneck reconstruction
+            # Information bottleneck
             irecon_loss = torch.tensor(0.0, device=self.device)
             if self.irecon > 0:
                 irecon_loss = self.irecon * self._compute_reconstruction_loss(
                     states_raw, pred_xl, dropout_xl
                 )
         
+        # Geometric manifold regularization
+        geometric_loss = torch.tensor(0.0, device=self.device)
+        if self.lorentz > 0:
+            if not (torch.isnan(z_manifold).any() or torch.isnan(ld_manifold).any()):
+                if self.use_euclidean_manifold:
+                    from .utils import euclidean_distance
+                    dist = euclidean_distance(z_manifold, ld_manifold)
+                else:
+                    dist = lorentz_distance(z_manifold, ld_manifold)
+                
+                if not torch.isnan(dist).any():
+                    geometric_loss = self.lorentz * dist.mean()
+        
+        # Validate encoder outputs
         if torch.isnan(q_m).any() or torch.isnan(q_s).any():
             print("Warning: NaN in encoder output, skipping batch")
             return
         
-        # KL divergence (standard VAE)
+        # KL divergence (standard VAE objective)
         kl_div = self.beta * self._normal_kl(
             q_m, q_s, torch.zeros_like(q_m), torch.zeros_like(q_s)
         ).sum(dim=-1).mean()
         
-        # Additional regularizations
+        # Additional regularizations (computed conditionally)
         dip_loss = self.dip * self._dip_loss(q_m, q_s) if self.dip > 0 else torch.tensor(0.0, device=self.device)
         tc_loss = self.tc * self._betatc_compute_total_correlation(q_z, q_m, q_s) if self.tc > 0 else torch.tensor(0.0, device=self.device)
         mmd_loss = self.info * self._compute_mmd(q_z, torch.randn_like(q_z)) if self.info > 0 else torch.tensor(0.0, device=self.device)
         
-        # Total loss (includes qz_div for ODE mode)
+        # Total loss (weighted sum of all objectives)
         total_loss = (
             recon_loss + irecon_loss + geometric_loss + qz_div + 
             kl_div + dip_loss + tc_loss + mmd_loss
         )
         
+        # Validate loss
         if torch.isnan(total_loss) or torch.isinf(total_loss):
-            print(f"Warning: Invalid loss - skipping batch")
+            print("Warning: Invalid loss, skipping batch")
             return
         
         # Backpropagation
         self.nn_optimizer.zero_grad()
         total_loss.backward()
         
+        # Gradient clipping
         if self.grad_clip is not None:
             torch.nn.utils.clip_grad_norm_(self.nn.parameters(), self.grad_clip)
         
+        # Update parameters
         self.nn_optimizer.step()
         
-        # Log losses (now includes qz_div)
+        # Log all loss components
         self.loss.append((
             total_loss.item(),
             recon_loss.item(),

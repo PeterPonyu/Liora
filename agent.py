@@ -1,5 +1,18 @@
+"""
+Liora: Lorentz Information ODE Regularized Variational AutoEncoder
+==================================================================
 
-"""LiVAE: Lorentz Information-regularized Variational AutoEncoder for single-cell transcriptomics."""
+A deep learning framework for single-cell RNA-seq analysis combining:
+- Variational Autoencoder (VAE) for dimensionality reduction
+- Lorentz/Euclidean manifold regularization for geometric structure
+- Information bottleneck for hierarchical representation learning
+- Neural ODE for trajectory inference (optional)
+- Multiple count-based likelihood functions (NB, ZINB, Poisson, ZIP)
+"""
+
+# ============================================================================
+# agent.py - Main User Interface
+# ============================================================================
 
 from .environment import Env
 from anndata import AnnData
@@ -9,72 +22,121 @@ import tqdm
 
 class Liora(Env):
     """
-    Liora model for single-cell RNA-seq analysis.
+    Liora: Lorentz Information ODE Regularized Variational AutoEncoder
     
-    Combines Variational Autoencoder with:
-    - Lorentz manifold regularization for geometric structure
-    - Information bottleneck for representation learning
-    - Multiple count-based likelihood functions
+    A unified framework for single-cell RNA-seq analysis that learns low-dimensional
+    representations while preserving geometric and topological structure through
+    manifold regularization and optional temporal dynamics via Neural ODEs.
+    
+    Architecture Overview
+    ---------------------
+    1. **Encoder**: Maps high-dimensional gene expression to latent space
+    2. **Information Bottleneck**: Optional compression layer for hierarchical features
+    3. **Manifold Regularization**: Lorentz or Euclidean distance constraints
+    4. **Decoder**: Reconstructs gene expression with count-appropriate likelihoods
+    5. **ODE Solver** (optional): Models continuous cell state trajectories
     
     Parameters
     ----------
     adata : AnnData
-        Annotated data matrix containing raw counts
+        Annotated data matrix with raw count data in `adata.layers[layer]`
     layer : str, default='counts'
-        Layer in adata.layers containing raw count data
+        Layer name containing raw unnormalized count data
     recon : float, default=1.0
-        Weight for primary reconstruction loss        
+        Weight for reconstruction loss (primary objective)
     irecon : float, default=0.0
         Weight for information bottleneck reconstruction loss
     lorentz : float, default=0.0
-        Weight for Lorentz manifold regularization
+        Weight for geometric manifold regularization
     beta : float, default=1.0
-        Weight for KL divergence (β-VAE)
+        Weight for KL divergence (β-VAE); >1 encourages disentanglement
     dip : float, default=0.0
-        Weight for disentangled inferred prior (DIP) loss
+        Weight for Disentangled Inferred Prior (DIP-VAE) loss
     tc : float, default=0.0
-        Weight for total correlation (β-TC-VAE) loss
+        Weight for Total Correlation (β-TC-VAE) loss
     info : float, default=0.0
-        Weight for maximum mean discrepancy (InfoVAE) loss
+        Weight for Maximum Mean Discrepancy (InfoVAE) loss
     hidden_dim : int, default=128
-        Hidden layer dimension
+        Hidden layer dimension in encoder/decoder
     latent_dim : int, default=10
-        Latent space dimension
+        Primary latent space dimensionality
     i_dim : int, default=2
-        Information bottleneck dimension
+        Information bottleneck dimension (should be < latent_dim)
     lr : float, default=1e-4
-        Learning rate
+        Learning rate for Adam optimizer
     use_bottleneck_lorentz : bool, default=True
-        If True, use bottleneck for Lorentz pairing; if False, use resampling
+        If True, compute manifold distance on bottleneck; else on resampled latents
     loss_type : str, default='nb'
-        Count likelihood: 'nb' (Negative Binomial), 'zinb' (Zero-Inflated NB),
-        'poisson', or 'zip' (Zero-Inflated Poisson)
+        Count likelihood model:
+        - 'nb': Negative Binomial (recommended for UMI data)
+        - 'zinb': Zero-Inflated Negative Binomial (high dropout)
+        - 'poisson': Poisson (simple baseline)
+        - 'zip': Zero-Inflated Poisson
     grad_clip : float, default=1.0
-        Gradient clipping threshold
+        Gradient clipping threshold for training stability
     adaptive_norm : bool, default=True
-        Use adaptive normalization based on dataset statistics
+        Use dataset-specific normalization heuristics
     use_layer_norm : bool, default=True
-        Use layer normalization for training stability
+        Apply layer normalization in encoder/decoder
     use_euclidean_manifold : bool, default=False
-        Use Euclidean manifold instead of Lorentz
+        Use Euclidean distance instead of Lorentz (hyperbolic) distance
     use_ode : bool, default=False
-        Use Neural ODE regularization
+        Enable Neural ODE regularization for trajectory inference
     vae_reg : float, default=0.5
-        Weight for VAE path in ODE mode
+        Weight for VAE path in ODE mode (should sum to 1.0 with ode_reg)
     ode_reg : float, default=0.5
         Weight for ODE path in ODE mode
     train_size : float, default=0.7
-        Proportion of data for training
+        Proportion of cells for training set
     val_size : float, default=0.15
-        Proportion of data for validation
+        Proportion of cells for validation set
     test_size : float, default=0.15
-        Proportion of data for testing
+        Proportion of cells for test set (should sum to 1.0)
     batch_size : int, default=128
-        Batch size for training
+        Mini-batch size for stochastic gradient descent
     random_seed : int, default=42
         Random seed for reproducibility
     device : torch.device, optional
-        Device for training (defaults to CUDA if available)
+        Computation device (auto-detects CUDA if available)
+    
+    Attributes
+    ----------
+    nn : VAE
+        The neural network model
+    train_losses : list
+        Training loss history
+    val_losses : list
+        Validation loss history
+    best_val_loss : float
+        Best validation loss achieved (for early stopping)
+    
+    Examples
+    --------
+    >>> import scanpy as sc
+    >>> from liora import Liora
+    >>> 
+    >>> # Load data
+    >>> adata = sc.read_h5ad('data.h5ad')
+    >>> 
+    >>> # Basic usage with default parameters
+    >>> model = Liora(adata, layer='counts')
+    >>> model.fit(epochs=100)
+    >>> latent = model.get_latent()
+    >>> 
+    >>> # Advanced: with manifold regularization and ODE
+    >>> model = Liora(
+    ...     adata, 
+    ...     lorentz=5.0,      # Enable Lorentz regularization
+    ...     use_ode=True,     # Enable trajectory inference
+    ...     latent_dim=10,
+    ...     i_dim=2
+    ... )
+    >>> model.fit(epochs=400, patience=25)
+    >>> 
+    >>> # Get embeddings and trajectories
+    >>> latent = model.get_latent()
+    >>> bottleneck = model.get_bottleneck()
+    >>> transitions = model.take_transition()  # ODE mode only
     """
     
     def __init__(
@@ -108,9 +170,21 @@ class Liora(Env):
         random_seed: int = 42,
         device: torch.device = None
     ):
+        # Auto-detect device
         if device is None:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            
+        
+        # Validate parameters
+        if not (0.99 <= train_size + val_size + test_size <= 1.01):
+            raise ValueError(f"Split sizes must sum to 1.0, got {train_size + val_size + test_size}")
+        
+        if use_ode and not (0.99 <= vae_reg + ode_reg <= 1.01):
+            raise ValueError(f"ODE weights must sum to 1.0, got {vae_reg + ode_reg}")
+        
+        if i_dim >= latent_dim:
+            raise ValueError(f"Information bottleneck dimension ({i_dim}) must be < latent dimension ({latent_dim})")
+        
+        # Initialize parent environment
         super().__init__(
             adata=adata,
             layer=layer,
@@ -150,35 +224,55 @@ class Liora(Env):
         early_stop: bool = True,
     ):
         """
-        Train model with epoch-based training and early stopping.
+        Train the Liora model with mini-batch gradient descent.
+        
+        Training uses:
+        - Adam optimizer with configurable learning rate
+        - Early stopping based on validation loss
+        - Gradient clipping for stability
+        - Periodic validation every `val_every` epochs
         
         Parameters
         ----------
-        epochs : int, default=100
-            Maximum number of epochs
-        patience : int, default=20
-            Early stopping patience (epochs without improvement)
+        epochs : int, default=400
+            Maximum number of training epochs
+        patience : int, default=25
+            Early stopping patience (epochs without validation improvement)
         val_every : int, default=5
-            Validate every N epochs
+            Validation frequency (every N epochs)
         early_stop : bool, default=True
-            Enable early stopping
-            
+            Enable early stopping mechanism
+        
         Returns
         -------
-        self : LiVAE
-            Trained model
+        self : Liora
+            Returns self for method chaining
+        
+        Notes
+        -----
+        Progress bar displays:
+        - Train: Training loss
+        - Val: Validation loss
+        - ARI: Adjusted Rand Index
+        - NMI: Normalized Mutual Information
+        - ASW: Average Silhouette Width
+        - CAL: Calinski-Harabasz score
+        - DAV: Davies-Bouldin score
+        - COR: Average correlation per dimension
+        - Best: Best validation loss seen
+        - Pat: Patience counter
         """
         with tqdm.tqdm(total=epochs, desc="Training", ncols=200) as pbar:
             for epoch in range(epochs):
-                
-                # Train for one epoch
+                # Train for one complete epoch
                 train_loss = self.train_epoch()
                 
-                # Validate periodically
+                # Periodic validation
                 if (epoch + 1) % val_every == 0 or epoch == 0:
                     val_loss, val_score = self.validate()
+                    
                     if early_stop:
-                        # Check early stopping
+                        # Check if we should stop early
                         should_stop, improved = self.check_early_stopping(
                             val_loss, patience
                         )
@@ -199,12 +293,12 @@ class Liora(Env):
                         })
                         
                         if should_stop:
-                            print(f"\n\nEarly stopping triggered at epoch {epoch + 1}")
+                            print(f"\n\nEarly stopping at epoch {epoch + 1}")
                             print(f"Best validation loss: {self.best_val_loss:.4f}")
                             self.load_best_model()
                             break
                     else:
-                        # Update progress bar without early stopping
+                        # No early stopping - just display metrics
                         pbar.set_postfix({
                             "Train": f"{train_loss:.2f}",
                             "Val": f"{val_loss:.2f}",
@@ -215,40 +309,47 @@ class Liora(Env):
                             "DAV": f"{val_score[4]:.2f}",
                             "COR": f"{val_score[5]:.2f}",
                         })
+                
                 pbar.update(1)
         
         return self
     
     def get_latent(self):
         """
-        Get latent representations for all cells.
+        Extract latent representations for all cells.
+        
+        In standard mode, returns encoder output.
+        In ODE mode, returns weighted combination of VAE and ODE paths.
         
         Returns
         -------
-        latent : ndarray
-            Latent representations of shape (n_cells, latent_dim)
+        latent : ndarray of shape (n_cells, latent_dim)
+            Low-dimensional cell embeddings
         """
         return self.take_latent(self.X_norm)
     
     def get_test_latent(self):
         """
-        Get latent representation from test set only.
+        Extract latent representations for test set only.
         
         Returns
         -------
-        latent : ndarray
-            Test set latent representations
+        latent : ndarray of shape (n_test_cells, latent_dim)
+            Test set embeddings
         """
         return self.take_latent(self.X_test_norm)
     
     def get_bottleneck(self):
         """
-        Get information bottleneck representations.
+        Extract information bottleneck representations.
+        
+        The bottleneck layer compresses latent features to a lower-dimensional
+        space (i_dim), capturing the most essential information for reconstruction.
         
         Returns
         -------
-        bottleneck : ndarray
-            Bottleneck representations of shape (n_cells, i_dim)
+        bottleneck : ndarray of shape (n_cells, i_dim)
+            Compressed hierarchical representations
         """
         x = torch.tensor(self.X_norm, dtype=torch.float32).to(self.device)
         with torch.no_grad():
