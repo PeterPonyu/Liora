@@ -92,3 +92,9 @@ dmypy.json
 *.pt
 *.pth
 *.ckpt
+
+# Temporary release scripts/notes (AI-generated)
+PUBLISH_*.sh
+RELEASE_NOTES_*.md
+RESTRUCTURE_*.md
+PUBLISHING.md

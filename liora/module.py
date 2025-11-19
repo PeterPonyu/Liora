@@ -147,11 +147,12 @@ class Encoder(nn.Module):
             output = self.attn_pool_fc(pooled)
         q_m, q_s = torch.chunk(output, 2, dim=-1)
         
-        # Clamp for numerical stability
+        # Clamp for numerical stability (prevent extreme activations)
         q_m = torch.clamp(q_m, -10, 10)
         q_s = torch.clamp(q_s, -10, 10)
         
-        # Convert log-variance to standard deviation with numerical safety
+        # Convert log-variance to std dev: softplus ensures positivity
+        # Clamp to [1e-6, 5.0] to prevent posterior collapse (too small) or instability (too large)
         s = torch.clamp(F.softplus(q_s) + 1e-6, min=1e-6, max=5.0)
         
         # Create posterior distribution and sample
@@ -344,15 +345,16 @@ class VAE(nn.Module, NODEMixin):
         # Encode
         q_z, q_m, q_s, n = self.encoder(x)
         
-        # Primary path: encoder → manifold
-        q_z_clipped = torch.clamp(q_z, -5, 5)
+        # Primary path: VAE latent → manifold
+        q_z_clipped = torch.clamp(q_z, -5, 5)  # Prevent numerical explosion
         
         if self.use_euclidean_manifold:
             z_manifold = q_z
         else:
             # Lorentz: tangent space → hyperboloid
+            # Pad with time-like coordinate (0) to embed in (n+1)-dim Lorentz space
             z_tangent = F.pad(q_z_clipped, (1, 0), value=0)
-            z_manifold = exp_map_at_origin(z_tangent)
+            z_manifold = exp_map_at_origin(z_tangent)  # Exponential map to hyperboloid
         
         # Information bottleneck path
         le = self.latent_encoder(q_z)
@@ -392,7 +394,7 @@ class VAE(nn.Module, NODEMixin):
         # Encode with time
         q_z, q_m, q_s, n, t = self.encoder(x)
         
-        # Sort by time (CPU-efficient preprocessing)
+        # Sort by time (ODE solvers require monotonically increasing time points)
         idxs = torch.argsort(t)
         t = t[idxs]
         q_z = q_z[idxs]
@@ -400,7 +402,7 @@ class VAE(nn.Module, NODEMixin):
         q_s = q_s[idxs]
         x = x[idxs]
         
-        # Remove duplicate time points for numerical stability
+        # Remove duplicate time points (ODE solvers fail with t[i] == t[i+1])
         unique_mask = torch.ones_like(t, dtype=torch.bool)
         if len(t) > 1:
             unique_mask[1:] = t[1:] != t[:-1]
@@ -412,8 +414,9 @@ class VAE(nn.Module, NODEMixin):
         x = x[unique_mask]
         
         # Solve ODE trajectory (CPU-optimized)
-        z0 = q_z[0].unsqueeze(0)
-        # Reset hidden state if ODE has internal memory
+        z0 = q_z[0].unsqueeze(0)  # Initial condition from first cell
+        # Reset hidden state if ODE has internal memory (e.g., GRUODE)
+        # This prevents memory from previous batches affecting current trajectory
         if hasattr(self.ode_solver, 'reset_hidden'):
             self.ode_solver.reset_hidden()
         q_z_ode = self.solve_ode(
@@ -422,7 +425,7 @@ class VAE(nn.Module, NODEMixin):
             step_size=self.ode_step_size,
             rtol=self.ode_rtol,
             atol=self.ode_atol,
-        ).squeeze(1)
+        ).squeeze(1)  # Remove batch dim: (T, 1, D) → (T, D)
         
         # Primary path: VAE latent → manifold
         q_z_clipped = torch.clamp(q_z, -5, 5)
