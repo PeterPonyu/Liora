@@ -176,6 +176,14 @@ class Liora(Env):
         attn_num_heads: int = 4,
         attn_num_layers: int = 2,
         attn_seq_len: int = 32,
+        # ODE function and solver parameters
+        ode_type: str = 'time_mlp',
+        ode_time_cond: str = 'concat',
+        ode_hidden_dim: int | None = None,
+        ode_solver_method: str = 'rk4',
+        ode_step_size: float | None = None,
+        ode_rtol: float | None = None,
+        ode_atol: float | None = None,
     ):
         # Auto-detect device
         if device is None:
@@ -220,8 +228,14 @@ class Liora(Env):
             test_size=test_size,
             batch_size=batch_size,
             random_seed=random_seed,
-            device=device
-            ,
+            device=device,
+            ode_type=ode_type,
+            ode_time_cond=ode_time_cond,
+            ode_hidden_dim=ode_hidden_dim,
+            ode_solver_method=ode_solver_method,
+            ode_step_size=ode_step_size,
+            ode_rtol=ode_rtol,
+            ode_atol=ode_atol,
             encoder_type=encoder_type,
             attn_embed_dim=attn_embed_dim,
             attn_num_heads=attn_num_heads,

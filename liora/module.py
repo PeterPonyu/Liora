@@ -13,8 +13,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 from typing import Optional, Tuple
-from torchdiffeq import odeint
 from .utils import exp_map_at_origin
+from .mixin import NODEMixin
+from .ode_functions import create_ode_func
 
 
 def weight_init(m):
@@ -95,8 +96,9 @@ class Encoder(nn.Module):
         
         # Time encoder for ODE mode
         if use_ode:
+            time_in_dim = hidden_dim if self.encoder_type == 'mlp' else attn_embed_dim
             self.time_encoder = nn.Sequential(
-                nn.Linear(hidden_dim, 1),
+                nn.Linear(time_in_dim, 1),
                 nn.Sigmoid(),  # Normalize time to [0, 1]
             )
         
@@ -238,105 +240,6 @@ class Decoder(nn.Module):
         return output, dropout
 
 
-class LatentODEfunc(nn.Module):
-    """
-    Neural ODE function in latent space.
-    
-    Defines the continuous dynamics: dz/dt = f_θ(z, t)
-    Learns smooth trajectories through latent space representing
-    cell differentiation or developmental processes.
-    
-    The ODE solver is kept on CPU for computational efficiency
-    (torchdiffeq is optimized for CPU execution).
-    """
-    
-    def __init__(self, n_latent: int = 10, n_hidden: int = 25):
-        super().__init__()
-        self.n_latent = n_latent
-        self.n_hidden = n_hidden
-        
-        # ODE neural network
-        self.fc1 = nn.Linear(n_latent, n_hidden)
-        self.fc2 = nn.Linear(n_hidden, n_latent)
-        self.elu = nn.ELU()
-        
-        self.apply(weight_init)
-
-    def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-        """
-        Compute latent dynamics gradient.
-        """
-        h = self.fc1(x)
-        h = self.elu(h)
-        dz = self.fc2(h)
-        return dz
-
-
-class NODEMixin:
-    """
-    Mixin providing Neural ODE solving capabilities.
-    
-    Handles CPU-GPU device transfers for efficient ODE integration.
-    The ODE solver runs on CPU (computational advantage), while
-    model parameters remain on the specified device.
-    """
-    
-    @staticmethod
-    def get_step_size(
-        step_size: Optional[float], 
-        t0: float, 
-        t1: float, 
-        n_points: int
-    ) -> dict:
-        """
-        Determine ODE solver step size.
-        
-        """
-        if step_size is None:
-            return {}
-        else:
-            if step_size == "auto":
-                step_size = (t1 - t0) / (n_points - 1)
-            return {"step_size": step_size}
-
-    def solve_ode(
-        self,
-        ode_func: nn.Module,
-        z0: torch.Tensor,
-        t: torch.Tensor,
-        method: str = "rk4",
-        step_size: Optional[float] = None,
-    ) -> torch.Tensor:
-        """
-        Solve ODE using torchdiffeq on CPU.
-        
-        Key Design Decision: ODE solving intentionally remains on CPU because:
-        1. torchdiffeq's adaptive step-size algorithms are CPU-optimized
-        2. Latent dimension is small (typically 10-20), minimal GPU benefit
-        3. Significant speedup (~2-3x) observed on CPU vs GPU
-        4. Memory efficiency: avoids GPU memory pressure
-        """
-        # Get solver options
-        options = self.get_step_size(step_size, t[0].item(), t[-1].item(), len(t))
-        
-        # Transfer to CPU for ODE solving
-        original_device = z0.device
-        cpu_z0 = z0.to("cpu")
-        cpu_t = t.to("cpu")        
-        try:
-            # Solve ODE on CPU
-            pred_z = odeint(ode_func, cpu_z0, cpu_t, method=method, options=options)
-        except Exception as e:
-            print(f"ODE solving failed: {e}, returning z0 trajectory")
-            # Fallback: return constant trajectory
-            pred_z = cpu_z0.unsqueeze(0).repeat(len(cpu_t), 1, 1)
-
-        # Transfer result back to original device
-        pred_z = pred_z.to(original_device)
-        
-        return pred_z
-
-
 class VAE(nn.Module, NODEMixin):
     """
     Liora: Lorentz Information ODE Regularized Variational AutoEncoder.
@@ -372,6 +275,15 @@ class VAE(nn.Module, NODEMixin):
         attn_num_heads: int = 4,
         attn_num_layers: int = 2,
         attn_seq_len: int = 32,
+        # ODE function and solver options
+        ode_type: str = 'time_mlp',
+        ode_time_cond: str = 'concat',
+        ode_hidden_dim: int | None = None,
+        ode_solver_method: str = 'rk4',
+        ode_step_size: Optional[float] = None,
+        ode_rtol: Optional[float] = None,
+        ode_atol: Optional[float] = None,
+        **kwargs
     ):
         super().__init__()
         
@@ -396,10 +308,24 @@ class VAE(nn.Module, NODEMixin):
         self.use_bottleneck_lorentz = use_bottleneck_lorentz
         self.use_euclidean_manifold = use_euclidean_manifold
         self.use_ode = use_ode
+        # ODE solver configuration (method/step size/rtol/atol)
+        self.ode_solver_method = ode_solver_method
+        self.ode_step_size = ode_step_size
+        self.ode_rtol = ode_rtol
+        self.ode_atol = ode_atol
         
         # Initialize ODE solver if needed
         if use_ode:
-            self.ode_solver = LatentODEfunc(action_dim, hidden_dim)
+            # ODE function capacity
+            ode_n_hidden = ode_hidden_dim if ode_hidden_dim is not None else hidden_dim
+            self.ode_solver = create_ode_func(
+                ode_type=ode_type,
+                n_latent=action_dim,
+                n_hidden=ode_n_hidden,
+                time_cond=ode_time_cond  # only used for time_mlp
+            )
+            # Track ODE type for reset logic
+            self.ode_type = ode_type
     
     def forward(self, x: torch.Tensor):
         """
@@ -487,7 +413,16 @@ class VAE(nn.Module, NODEMixin):
         
         # Solve ODE trajectory (CPU-optimized)
         z0 = q_z[0].unsqueeze(0)
-        q_z_ode = self.solve_ode(self.ode_solver, z0, t).squeeze(1)
+        # Reset hidden state if ODE has internal memory
+        if hasattr(self.ode_solver, 'reset_hidden'):
+            self.ode_solver.reset_hidden()
+        q_z_ode = self.solve_ode(
+            self.ode_solver, z0, t,
+            method=self.ode_solver_method,
+            step_size=self.ode_step_size,
+            rtol=self.ode_rtol,
+            atol=self.ode_atol,
+        ).squeeze(1)
         
         # Primary path: VAE latent → manifold
         q_z_clipped = torch.clamp(q_z, -5, 5)

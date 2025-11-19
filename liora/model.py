@@ -54,6 +54,14 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
         attn_num_heads: int = 4,
         attn_num_layers: int = 2,
         attn_seq_len: int = 32,
+        # ODE function and solver exposure
+        ode_type: str = 'time_mlp',
+        ode_time_cond: str = 'concat',
+        ode_hidden_dim: int | None = None,
+        ode_solver_method: str = 'rk4',
+        ode_step_size: float | None = None,
+        ode_rtol: float | None = None,
+        ode_atol: float | None = None,
         **kwargs
     ):
         # Store hyperparameters
@@ -89,6 +97,13 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
             attn_num_heads=attn_num_heads,
             attn_num_layers=attn_num_layers,
             attn_seq_len=attn_seq_len,
+            ode_type=ode_type,
+            ode_time_cond=ode_time_cond,
+            ode_hidden_dim=ode_hidden_dim,
+            ode_solver_method=ode_solver_method,
+            ode_step_size=ode_step_size,
+            ode_rtol=ode_rtol,
+            ode_atol=ode_atol,
         )
         
         # Initialize optimizer
@@ -117,7 +132,16 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
             t_sorted = torch.tensor(t_sorted, dtype=torch.float32)
             q_z_sorted = q_z[sort_idx]
             z0 = q_z_sorted[0]
-            q_z_ode = self.nn.solve_ode(self.nn.ode_solver, z0, t_sorted)
+            # Reset hidden state if ODE has memory
+            if hasattr(self.nn.ode_solver, 'reset_hidden'):
+                self.nn.ode_solver.reset_hidden()
+            q_z_ode = self.nn.solve_ode(
+                self.nn.ode_solver, z0, t_sorted,
+                method=getattr(self.nn, 'ode_solver_method', 'rk4'),
+                step_size=getattr(self.nn, 'ode_step_size', None),
+                rtol=getattr(self.nn, 'ode_rtol', None),
+                atol=getattr(self.nn, 'ode_atol', None),
+            )
             q_z_ode = q_z_ode[sort_idxr]
             
             # Weighted combination
@@ -143,7 +167,15 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
             t_sorted = torch.tensor(t_sorted, dtype=torch.float32)
             q_z_sorted = q_z[sort_idx]
             z0 = q_z_sorted[0]
-            q_z_ode = self.nn.solve_ode(self.nn.ode_solver, z0, t_sorted)
+            if hasattr(self.nn.ode_solver, 'reset_hidden'):
+                self.nn.ode_solver.reset_hidden()
+            q_z_ode = self.nn.solve_ode(
+                self.nn.ode_solver, z0, t_sorted,
+                method=getattr(self.nn, 'ode_solver_method', 'rk4'),
+                step_size=getattr(self.nn, 'ode_step_size', None),
+                rtol=getattr(self.nn, 'ode_rtol', None),
+                atol=getattr(self.nn, 'ode_atol', None),
+            )
             q_z_ode = q_z_ode[sort_idxr]
             
             # Bottleneck on both paths

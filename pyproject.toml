@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liora"
+version = "0.4.0"
+description = "Liora: Lorentz Information ODE-Regularized Variational Autoencoder for single-cell RNA-seq"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [
+  { name = "Zeyu Fu", email = "fuzeyu99@126.com" }
+]
+maintainers = [
+  { name = "Zeyu Fu", email = "fuzeyu99@126.com" }
+]
+keywords = [
+  "single-cell",
+  "rna-seq",
+  "scRNA-seq",
+  "vae",
+  "variational-autoencoder",
+  "neural-ode",
+  "ode",
+  "manifold",
+  "lorentz",
+  "hyperbolic",
+  "transformer",
+  "trajectory-inference",
+  "bioinformatics"
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Medical Science Apps."
+]
+dependencies = [
+  "torch>=2.1",
+  "torchdiffeq>=0.2.3",
+  "numpy>=1.23",
+  "scipy>=1.9",
+  "scikit-learn>=1.1",
+  "anndata>=0.9",
+  "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=7.0",
+  "pytest-cov>=4.0"
+]
+dev = [
+  "pytest>=7.0",
+  "pytest-cov>=4.0",
+  "black>=23.0",
+  "isort>=5.12",
+  "flake8>=6.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/PeterPonyu/liora"
+Repository = "https://github.com/PeterPonyu/liora"
+Issues = "https://github.com/PeterPonyu/liora/issues"
+Documentation = "https://github.com/PeterPonyu/liora#readme"
+
+[tool.setuptools]
+packages = ["liora"]
+
+[tool.setuptools.package-data]
+liora = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q"
+testpaths = ["liora/tests"]
+pythonpath = ["."]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100

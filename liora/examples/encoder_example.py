@@ -2,12 +2,13 @@
 Small example to demonstrate the attention-based encoder.
 Run from repository root with:
 
-PYTHONPATH=/home/zeyufu/LAB python -m Liora.examples.encoder_example
+cd /home/zeyufu/LAB/Liora
+python -m liora.examples.encoder_example
 
 """
 
 import torch
-from Liora import module
+from liora import module
 
 def run_example():
     batch = 8

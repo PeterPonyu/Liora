@@ -202,7 +202,7 @@ class Env(LioraModel, envMixin):
         
         # Compute and display statistics
         stats = compute_dataset_stats(X)
-        print(f"Dataset statistics:")
+        print("Dataset statistics:")
         print(f"  Cells: {X.shape[0]:,}, Genes: {X.shape[1]:,}")
         print(f"  Sparsity: {stats['sparsity']:.2%}, "
               f"Lib size: {stats['lib_size_mean']:.0f}±{stats['lib_size_std']:.0f}, "
@@ -285,7 +285,7 @@ class Env(LioraModel, envMixin):
         self.labels_val = self.labels[self.val_idx]
         self.labels_test = self.labels[self.test_idx]
         
-        print(f"\nData split:")
+        print("\nData split:")
         print(f"  Train: {len(self.train_idx):,} cells ({len(self.train_idx)/self.n_obs*100:.1f}%)")
         print(f"  Val:   {len(self.val_idx):,} cells ({len(self.val_idx)/self.n_obs*100:.1f}%)")
         print(f"  Test:  {len(self.test_idx):,} cells ({len(self.test_idx)/self.n_obs*100:.1f}%)")
