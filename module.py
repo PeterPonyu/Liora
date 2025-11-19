@@ -43,21 +43,55 @@ class Encoder(nn.Module):
         hidden_dim: int, 
         action_dim: int, 
         use_layer_norm: bool = True, 
-        use_ode: bool = False
+        use_ode: bool = False,
+        # Encoder type options: 'mlp' (default), 'transformer' (self-attention based)
+        encoder_type: str = 'mlp',
+        # Attention-specific hyperparameters (only used when encoder_type != 'mlp')
+        attn_embed_dim: int = 64,
+        attn_num_heads: int = 4,
+        attn_num_layers: int = 2,
+        attn_seq_len: int = 32,
     ):
         super().__init__()
         self.use_layer_norm = use_layer_norm
         self.use_ode = use_ode
+        self.encoder_type = encoder_type.lower() if isinstance(encoder_type, str) else 'mlp'
         
-        # Main encoder layers
-        self.fc1 = nn.Linear(state_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = nn.Linear(hidden_dim, action_dim * 2)  # mu and log_var
+        # Choose encoder implementation
+        if self.encoder_type == 'mlp':
+            # Main encoder layers (MLP)
+            self.fc1 = nn.Linear(state_dim, hidden_dim)
+            self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+            self.fc3 = nn.Linear(hidden_dim, action_dim * 2)  # mu and log_var
+        else:
+            # Self-attention / Transformer-based encoder
+            # Design: project input features into a small sequence of token embeddings,
+            # run through TransformerEncoder, then aggregate to obtain a latent vector.
+            self.attn_seq_len = attn_seq_len
+            self.attn_embed_dim = attn_embed_dim
+            # Project raw features -> seq_len * embed_dim
+            self.input_proj = nn.Linear(state_dim, attn_seq_len * attn_embed_dim)
+
+            # Transformer encoder stack
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=attn_embed_dim,
+                nhead=attn_num_heads,
+                dim_feedforward=max(attn_embed_dim * 4, 128),
+                activation='relu',
+                batch_first=False,  # we'll feed (seq_len, batch, embed_dim)
+            )
+            self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=attn_num_layers)
+
+            # Final projection from pooled transformer embedding -> mu/logvar
+            self.attn_pool_fc = nn.Linear(attn_embed_dim, action_dim * 2)
         
-        # Optional layer normalization
-        if use_layer_norm:
+        # Optional layer normalization (MLP path)
+        if use_layer_norm and self.encoder_type == 'mlp':
             self.ln1 = nn.LayerNorm(hidden_dim)
             self.ln2 = nn.LayerNorm(hidden_dim)
+        # Optional layernorm for attention outputs
+        if use_layer_norm and self.encoder_type != 'mlp':
+            self.attn_ln = nn.LayerNorm(attn_embed_dim)
         
         # Time encoder for ODE mode
         if use_ode:
@@ -72,20 +106,43 @@ class Encoder(nn.Module):
         """
         Encode input to latent distribution.
         """
-        # First hidden layer with optional normalization
-        h1 = self.fc1(x)
-        if self.use_layer_norm:
-            h1 = self.ln1(h1)
-        h1 = F.relu(h1)
-        
-        # Second hidden layer with optional normalization
-        h2 = self.fc2(h1)
-        if self.use_layer_norm:
-            h2 = self.ln2(h2)
-        h2 = F.relu(h2)
-        
-        # Output layer: mean and log-variance
-        output = self.fc3(h2)
+        if self.encoder_type == 'mlp':
+            # First hidden layer with optional normalization
+            h1 = self.fc1(x)
+            if self.use_layer_norm:
+                h1 = self.ln1(h1)
+            h1 = F.relu(h1)
+
+            # Second hidden layer with optional normalization
+            h2 = self.fc2(h1)
+            if self.use_layer_norm:
+                h2 = self.ln2(h2)
+            h2 = F.relu(h2)
+
+            # Output layer: mean and log-variance
+            output = self.fc3(h2)
+        else:
+            # Attention / Transformer-based encoder path
+            # Project input into sequence of embeddings
+            proj = self.input_proj(x)  # (batch, seq_len * embed)
+            bsz = proj.size(0)
+            seq = proj.view(bsz, self.attn_seq_len, self.attn_embed_dim)  # (batch, seq, embed)
+
+            # Transformer expects (seq_len, batch, embed)
+            seq = seq.transpose(0, 1)
+            seq_out = self.transformer(seq)  # (seq_len, batch, embed)
+
+            # Back to (batch, seq, embed)
+            seq_out = seq_out.transpose(0, 1)
+
+            # Optional layernorm then pool across sequence
+            if self.use_layer_norm:
+                seq_out = self.attn_ln(seq_out)
+
+            pooled = seq_out.mean(dim=1)  # (batch, embed)
+
+            # Final projection to get mu/logvar
+            output = self.attn_pool_fc(pooled)
         q_m, q_s = torch.chunk(output, 2, dim=-1)
         
         # Clamp for numerical stability
@@ -101,9 +158,15 @@ class Encoder(nn.Module):
         
         # Optional: predict time for ODE trajectory
         if self.use_ode:
-            t = self.time_encoder(h2).squeeze(-1)  # Shape: (batch_size,)
+            # For attention path, build a small time predictor if needed
+            if hasattr(self, 'time_encoder'):
+                # MLP time encoder expects hidden_dim inputs; try to reuse pooled representation
+                t_in = pooled if self.encoder_type != 'mlp' else h2
+                t = self.time_encoder(t_in).squeeze(-1)
+            else:
+                t = None
             return q_z, q_m, q_s, n, t
-        
+
         return q_z, q_m, q_s, n
 
 
@@ -302,12 +365,29 @@ class VAE(nn.Module, NODEMixin):
         use_layer_norm: bool = True, 
         use_euclidean_manifold: bool = False, 
         use_ode: bool = False,
-        device: torch.device = None
+        device: torch.device = None,
+        # Encoder type and attention options to be forwarded to Encoder
+        encoder_type: str = 'mlp',
+        attn_embed_dim: int = 64,
+        attn_num_heads: int = 4,
+        attn_num_layers: int = 2,
+        attn_seq_len: int = 32,
     ):
         super().__init__()
         
         # Core components
-        self.encoder = Encoder(state_dim, hidden_dim, action_dim, use_layer_norm, use_ode).to(device)
+        self.encoder = Encoder(
+            state_dim,
+            hidden_dim,
+            action_dim,
+            use_layer_norm,
+            use_ode,
+            encoder_type=encoder_type,
+            attn_embed_dim=attn_embed_dim,
+            attn_num_heads=attn_num_heads,
+            attn_num_layers=attn_num_layers,
+            attn_seq_len=attn_seq_len,
+        ).to(device)
         self.decoder = Decoder(state_dim, hidden_dim, action_dim, loss_type, use_layer_norm).to(device)
         self.latent_encoder = nn.Linear(action_dim, i_dim).to(device)
         self.latent_decoder = nn.Linear(i_dim, action_dim).to(device)

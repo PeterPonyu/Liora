@@ -136,7 +136,8 @@ class Liora(Env):
     >>> # Get embeddings and trajectories
     >>> latent = model.get_latent()
     >>> bottleneck = model.get_bottleneck()
-    >>> transitions = model.take_transition()  # ODE mode only
+    >>> pseudotime = model.get_time() # ODE mode only
+    >>> transitions = model.get_transition()  # ODE mode only
     """
     
     def __init__(
@@ -168,7 +169,13 @@ class Liora(Env):
         test_size: float = 0.15,
         batch_size: int = 128,
         random_seed: int = 42,
-        device: torch.device = None
+        device : torch.device = None,
+        # Encoder selection and attention hyperparameters
+        encoder_type: str = 'mlp',
+        attn_embed_dim: int = 64,
+        attn_num_heads: int = 4,
+        attn_num_layers: int = 2,
+        attn_seq_len: int = 32,
     ):
         # Auto-detect device
         if device is None:
@@ -214,6 +221,12 @@ class Liora(Env):
             batch_size=batch_size,
             random_seed=random_seed,
             device=device
+            ,
+            encoder_type=encoder_type,
+            attn_embed_dim=attn_embed_dim,
+            attn_num_heads=attn_num_heads,
+            attn_num_layers=attn_num_layers,
+            attn_seq_len=attn_seq_len
         )
     
     def fit(
@@ -289,7 +302,7 @@ class Liora(Env):
                             "COR": f"{val_score[5]:.2f}",
                             "Best": f"{self.best_val_loss:.2f}",
                             "Pat": f"{self.patience_counter}/{patience}",
-                            "✓" if improved else "✗": ""
+                            "Imp": "✓" if improved else "✗"
                         })
                         
                         if should_stop:
@@ -328,14 +341,21 @@ class Liora(Env):
         """
         return self.take_latent(self.X_norm)
     
+    def get_time(self):
+        """
+        Extract pseudotime for all cells.
+        """
+        return self.take_time(self.X_norm)
+    
+    def get_transition(self):
+        """
+        Extract transition probabilities for all cells.
+        """
+        return self.take_transition(self.X_norm)
+    
     def get_test_latent(self):
         """
         Extract latent representations for test set only.
-        
-        Returns
-        -------
-        latent : ndarray of shape (n_test_cells, latent_dim)
-            Test set embeddings
         """
         return self.take_latent(self.X_test_norm)
     

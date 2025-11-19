@@ -48,6 +48,12 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
         use_ode=False,
         vae_reg=0.5,
         ode_reg=0.5,
+        # Encoder selection: 'mlp' (default) or 'transformer'
+        encoder_type: str = 'mlp',
+        attn_embed_dim: int = 64,
+        attn_num_heads: int = 4,
+        attn_num_layers: int = 2,
+        attn_seq_len: int = 32,
         **kwargs
     ):
         # Store hyperparameters
@@ -77,7 +83,12 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
             use_layer_norm=use_layer_norm,
             use_euclidean_manifold=use_euclidean_manifold,
             use_ode=use_ode,
-            device=device
+            device=device,
+            encoder_type=encoder_type,
+            attn_embed_dim=attn_embed_dim,
+            attn_num_heads=attn_num_heads,
+            attn_num_layers=attn_num_layers,
+            attn_seq_len=attn_seq_len,
         )
         
         # Initialize optimizer

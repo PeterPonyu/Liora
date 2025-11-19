@@ -161,7 +161,8 @@ class Env(LioraModel, envMixin):
             use_euclidean_manifold=use_euclidean_manifold,
             use_ode=use_ode,
             vae_reg=vae_reg,
-            ode_reg=ode_reg
+            ode_reg=ode_reg,
+            **kwargs
         )
         
         # Initialize tracking
