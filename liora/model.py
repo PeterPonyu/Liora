@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+from typing import Optional
 from sklearn.metrics.pairwise import pairwise_distances
 from .mixin import scviMixin, dipMixin, betatcMixin, infoMixin
 from .module import VAE
@@ -57,11 +58,11 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
         # ODE function and solver exposure
         ode_type: str = 'time_mlp',
         ode_time_cond: str = 'concat',
-        ode_hidden_dim: int | None = None,
+        ode_hidden_dim: Optional[int] = None,
         ode_solver_method: str = 'rk4',
-        ode_step_size: float | None = None,
-        ode_rtol: float | None = None,
-        ode_atol: float | None = None,
+        ode_step_size: Optional[float] = None,
+        ode_rtol: Optional[float] = None,
+        ode_atol: Optional[float] = None,
         **kwargs
     ):
         # Store hyperparameters

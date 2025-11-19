@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2025-11-19
+## [0.4.1] - 2025-11-19
+
+### Fixed
+- Python 3.9 compatibility: Replaced `|` union type syntax with `Optional[]` from typing
+- Added missing `typing.Optional` imports to agent.py and model.py
+- CI/CD tests now pass on Python 3.9
+
+## [0.4.0] - 2025-11-19
 
 ### Added
 - Transformer-based encoder option with self-attention mechanism
@@ -19,11 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restructured package for PyPI distribution
 - Improved ODE solver interface with CPU optimization
 - Enhanced manifold regularization with both Lorentz and Euclidean options
+- Updated README links (GitHub URLs, contact, citation)
 
 ### Fixed
 - Time encoder dimension mismatch for attention-based encoders
 - GRU ODE hidden state management across trajectories
 - Import paths and package structure
+
+## [0.3.0] - 2025-11-19
+
+### Changed
+- Initial PyPI-ready package structure
 
 ## [0.2.0] - Earlier
 
@@ -38,12 +51,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Basic VAE for single-cell RNA-seq analysis
 - Core training loop and data preprocessing
-
-## [0.4.0] - 2025-11-19
-
-### Changed
-- Bump version to 0.4.0; align docs and publishing guides
-- Update README links (GitHub URLs, contact, citation)
-
-### Fixed
-- Publishing guides referencing 0.3.0 now updated to 0.4.0

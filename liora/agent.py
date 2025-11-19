@@ -16,6 +16,7 @@ A deep learning framework for single-cell RNA-seq analysis combining:
 
 from .environment import Env
 from anndata import AnnData
+from typing import Optional
 import torch
 import tqdm
 
@@ -179,11 +180,11 @@ class Liora(Env):
         # ODE function and solver parameters
         ode_type: str = 'time_mlp',
         ode_time_cond: str = 'concat',
-        ode_hidden_dim: int | None = None,
+        ode_hidden_dim: Optional[int] = None,
         ode_solver_method: str = 'rk4',
-        ode_step_size: float | None = None,
-        ode_rtol: float | None = None,
-        ode_atol: float | None = None,
+        ode_step_size: Optional[float] = None,
+        ode_rtol: Optional[float] = None,
+        ode_atol: Optional[float] = None,
     ):
         # Auto-detect device
         if device is None:

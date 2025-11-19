@@ -278,7 +278,7 @@ class VAE(nn.Module, NODEMixin):
         # ODE function and solver options
         ode_type: str = 'time_mlp',
         ode_time_cond: str = 'concat',
-        ode_hidden_dim: int | None = None,
+        ode_hidden_dim: Optional[int] = None,
         ode_solver_method: str = 'rk4',
         ode_step_size: Optional[float] = None,
         ode_rtol: Optional[float] = None,
