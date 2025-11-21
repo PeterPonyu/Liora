@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "liora"
-version = "0.4.1"
+version = "0.4.2"
 description = "Liora: Lorentz Information ODE-Regularized Variational Autoencoder for single-cell RNA-seq"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -66,10 +66,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/PeterPonyu/liora"
-Repository = "https://github.com/PeterPonyu/liora"
-Issues = "https://github.com/PeterPonyu/liora/issues"
-Documentation = "https://github.com/PeterPonyu/liora#readme"
+Homepage = "https://github.com/PeterPonyu/Liora"
+Repository = "https://github.com/PeterPonyu/Liora"
+Issues = "https://github.com/PeterPonyu/Liora/issues"
+Documentation = "https://github.com/PeterPonyu/Liora#readme"
 
 [tool.setuptools]
 packages = ["liora"]

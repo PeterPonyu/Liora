@@ -6,8 +6,8 @@ Thank you for your interest in contributing to Liora!
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/zeyufu/liora.git
-cd liora
+git clone https://github.com/zeyufu/Liora.git
+cd Liora
 ```
 
 2. Install in editable mode with dev dependencies:
@@ -26,8 +26,8 @@ pytest
 - We use isort for import sorting
 - Run formatters before committing:
 ```bash
-black liora/
-isort liora/
+black Liora/
+isort Liora/
 ```
 
 ## Pull Request Process

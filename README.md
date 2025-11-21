@@ -1,65 +1,39 @@
 # Liora
 
-**Lorentz Information ODE-Regularized Variational Autoencoder for single-cell RNA-seq**
+**Lorentz Information ODE-Regularized Variational Autoencoder for Single-cell Analysis**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/liora)](https://pypi.org/project/liora/)
 
-Liora is a deep learning framework for single-cell RNA-seq analysis that combines:
+Liora is a powerful deep learning framework for single-cell RNA-seq analysis, combining variational autoencoders with geometric manifold learning and neural ODEs for trajectory inference.
 
-- **Variational Autoencoder (VAE)** for dimensionality reduction
-- **Lorentz (hyperbolic) or Euclidean manifold regularization** for capturing hierarchical structure
-- **Information bottleneck** for hierarchical representation learning
-- **Neural ODE dynamics** for continuous trajectory inference (optional)
-- **Count-based likelihoods**: Negative Binomial (NB), Zero-Inflated NB (ZINB), Poisson, Zero-Inflated Poisson (ZIP)
-- **Flexible encoder architectures**: MLP (default) or Transformer-based with self-attention
-- **Multiple ODE function types**: Legacy MLP, time-conditioned MLP, or GRU-based with memory
+## Key Features
 
-## Features
-
-### Encoder Options
-- **MLP Encoder** (default): Two-layer fully connected network with ReLU activations
-- **Transformer Encoder**: Self-attention mechanism with configurable heads, layers, and embedding dimensions
-  - Projects features into token sequences
-  - Applies multi-head attention across feature space
-  - Mean-pools output for latent representation
-
-### ODE Function Types
-- **Legacy**: Time-invariant MLP (backward compatibility)
-- **Time-conditioned MLP**: Time-aware dynamics with multiple conditioning strategies
-  - `concat`: Concatenate time to latent state
-  - `film`: Feature-wise Linear Modulation (scale and shift)
-  - `add`: Additive time embedding
-- **GRU-based**: Recurrent dynamics with trajectory memory for smooth developmental processes
-
-### ODE Solvers
-Supports all torchdiffeq methods:
-- **Fixed-step**: `rk4`, `euler`, `midpoint` (use `ode_step_size`)
-- **Adaptive**: `dopri5`, `adams`, `bosh3` (use `ode_rtol`, `ode_atol`)
+- **Advanced VAE Architecture**: Dimensionality reduction with count-based likelihoods (NB, ZINB, Poisson, ZIP)
+- **Geometric Manifold Learning**: Lorentz (hyperbolic) or Euclidean regularization for hierarchical structure
+- **Information Bottleneck**: Hierarchical representation with controllable compression
+- **Neural ODE Trajectory Inference**: Continuous temporal dynamics with multiple solver options
+- **Flexible Encoders**: Standard MLP or Transformer-based with self-attention
+- **Advanced ODE Functions**: Time-conditioned MLP or GRU-based recurrent dynamics
 
 ## Installation
-
-### From PyPI
 
 ```bash
 pip install liora
 ```
 
-### From Source
+Or install from source:
 
 ```bash
-git clone https://github.com/PeterPonyu/liora.git
-cd liora
+git clone https://github.com/PeterPonyu/Liora.git
+cd Liora
 pip install -e .
 ```
 
-### With Test Dependencies
-
-```bash
-pip install -e .[test]
-```
-
 ## Quick Start
+
+### Basic Usage
 
 ```python
 import scanpy as sc
@@ -68,7 +42,7 @@ from liora import Liora
 # Load your data
 adata = sc.read_h5ad('data.h5ad')
 
-# Basic usage with default MLP encoder
+# Train with default settings
 model = Liora(
     adata,
     layer='counts',
@@ -77,9 +51,15 @@ model = Liora(
     i_dim=2,
 )
 model.fit(epochs=100)
-latent = model.get_latent()
 
-# Advanced: Transformer encoder + ODE trajectory inference
+# Extract embeddings
+latent = model.get_latent()
+```
+
+### Advanced Configuration
+
+```python
+# Transformer encoder + Neural ODE trajectory inference
 model = Liora(
     adata,
     layer='counts',
@@ -109,126 +89,80 @@ model.fit(epochs=200, patience=20)
 # Extract results
 latent = model.get_latent()           # Latent embeddings
 bottleneck = model.get_bottleneck()   # Information bottleneck
-pseudotime = model.get_time()         # Predicted pseudotime (ODE mode)
-transitions = model.get_transition()  # Transition matrix (ODE mode)
+pseudotime = model.get_time()         # Predicted pseudotime
+transitions = model.get_transition()  # Transition matrix
 ```
 
-## API Reference
+## Configuration Guide
 
-### Main Parameters
+### Architecture Parameters
 
-#### Model Architecture
-- `hidden_dim` (int, default=128): Hidden layer dimension in encoder/decoder
-- `latent_dim` (int, default=10): Primary latent space dimensionality
-- `i_dim` (int, default=2): Information bottleneck dimension (must be < latent_dim)
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `hidden_dim` | int | 128 | Hidden layer dimension |
+| `latent_dim` | int | 10 | Primary latent space size |
+| `i_dim` | int | 2 | Information bottleneck dimension |
 
-#### Encoder Configuration
-- `encoder_type` (str, default='mlp'): Encoder architecture
-  - `'mlp'`: Standard multi-layer perceptron
-  - `'transformer'`: Self-attention based encoder
-- `attn_embed_dim` (int, default=64): Embedding dimension for transformer tokens
-- `attn_num_heads` (int, default=4): Number of attention heads
-- `attn_num_layers` (int, default=2): Number of transformer encoder layers
-- `attn_seq_len` (int, default=32): Number of token sequences
+### Encoder Options
 
-#### ODE Configuration
-- `use_ode` (bool, default=False): Enable Neural ODE regularization
-- `ode_type` (str, default='time_mlp'): ODE function architecture
-  - `'legacy'`: Time-invariant MLP (not recommended)
-  - `'time_mlp'`: Time-conditioned MLP (recommended)
-  - `'gru'`: GRU-based with recurrent memory
-- `ode_time_cond` (str, default='concat'): Time conditioning for 'time_mlp'
-  - `'concat'`: Concatenate time to state
-  - `'film'`: Feature-wise Linear Modulation
-  - `'add'`: Additive time embedding
-- `ode_hidden_dim` (int, optional): Hidden dimension for ODE networks (defaults to `hidden_dim`)
-- `ode_solver_method` (str, default='rk4'): Torchdiffeq solver method
-- `ode_step_size` (float or 'auto', optional): Step size for fixed-step solvers
-- `ode_rtol` (float, optional): Relative tolerance for adaptive solvers
-- `ode_atol` (float, optional): Absolute tolerance for adaptive solvers
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `encoder_type` | str | `'mlp'` | `'mlp'` or `'transformer'` |
+| `attn_embed_dim` | int | 64 | Transformer embedding dimension |
+| `attn_num_heads` | int | 4 | Number of attention heads |
+| `attn_num_layers` | int | 2 | Transformer encoder layers |
+| `attn_seq_len` | int | 32 | Token sequence length |
 
-#### Loss Configuration
-- `recon` (float, default=1.0): Reconstruction loss weight
-- `irecon` (float, default=0.0): Information bottleneck reconstruction weight
-- `lorentz` (float, default=0.0): Manifold regularization weight
-- `beta` (float, default=1.0): KL divergence weight (β-VAE)
-- `dip` (float, default=0.0): DIP-VAE loss weight
-- `tc` (float, default=0.0): Total Correlation loss weight
-- `info` (float, default=0.0): MMD loss weight
-- `loss_type` (str, default='nb'): Count likelihood model
-  - `'nb'`: Negative Binomial (recommended for UMI data)
-  - `'zinb'`: Zero-Inflated Negative Binomial
-  - `'poisson'`: Poisson
-  - `'zip'`: Zero-Inflated Poisson
+### ODE Configuration
 
-#### Training Configuration
-- `lr` (float, default=1e-4): Learning rate for Adam optimizer
-- `batch_size` (int, default=128): Mini-batch size
-- `train_size` (float, default=0.7): Proportion of training data
-- `val_size` (float, default=0.15): Proportion of validation data
-- `test_size` (float, default=0.15): Proportion of test data
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `use_ode` | bool | False | Enable Neural ODE |
+| `ode_type` | str | `'time_mlp'` | `'legacy'`, `'time_mlp'`, or `'gru'` |
+| `ode_time_cond` | str | `'concat'` | `'concat'`, `'film'`, or `'add'` |
+| `ode_hidden_dim` | int | None | ODE network hidden size |
+| `ode_solver_method` | str | `'rk4'` | Solver: `'rk4'`, `'dopri5'`, `'adams'`, etc. |
+| `ode_step_size` | float | None | Fixed-step size or `'auto'` |
+| `ode_rtol` | float | None | Relative tolerance (adaptive solvers) |
+| `ode_atol` | float | None | Absolute tolerance (adaptive solvers) |
 
-### Methods
+### Loss Configuration
 
-- `fit(epochs=400, patience=25, val_every=5, early_stop=True)`: Train the model
-- `get_latent()`: Extract latent representations
-- `get_bottleneck()`: Extract information bottleneck embeddings
-- `get_time()`: Get predicted pseudotime (ODE mode only)
-- `get_transition()`: Get cell-to-cell transition probabilities (ODE mode only)
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `recon` | float | 1.0 | Reconstruction loss weight |
+| `irecon` | float | 0.0 | Bottleneck reconstruction weight |
+| `lorentz` | float | 0.0 | Manifold regularization weight |
+| `beta` | float | 1.0 | KL divergence weight (β-VAE) |
+| `dip` | float | 0.0 | DIP-VAE loss weight |
+| `tc` | float | 0.0 | Total Correlation loss weight |
+| `info` | float | 0.0 | MMD loss weight |
+| `loss_type` | str | `'nb'` | `'nb'`, `'zinb'`, `'poisson'`, or `'zip'` |
 
-## Testing
+### Training Parameters
 
-Run the test suite:
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `lr` | float | 1e-4 | Learning rate |
+| `batch_size` | int | 128 | Mini-batch size |
+| `train_size` | float | 0.7 | Training set proportion |
+| `val_size` | float | 0.15 | Validation set proportion |
+| `test_size` | float | 0.15 | Test set proportion |
 
-```bash
-pytest
+## Methods
+
+### Training
+```python
+model.fit(epochs=400, patience=25, val_every=5, early_stop=True)
 ```
 
-Or with coverage:
-
-```bash
-pytest --cov=liora --cov-report=html
+### Extraction
+```python
+latent = model.get_latent()           # Latent representations
+bottleneck = model.get_bottleneck()   # Information bottleneck embeddings
+pseudotime = model.get_time()         # Pseudotime (ODE mode)
+transitions = model.get_transition()  # Transition probabilities (ODE mode)
 ```
-
-Tests cover:
-- ODE function construction for all types
-- Fixed-step and adaptive ODE solvers
-- VAE forward passes with different configurations
-- Encoder variants (MLP and Transformer)
-
-## Examples
-
-See the `examples/` directory for:
-- `encoder_example.py`: Demonstrates MLP vs Transformer encoders
-- More examples coming soon!
-
-## Technical Notes
-
-### ODE Solver Selection
-
-**Fixed-step solvers** (rk4, euler, midpoint):
-- Require `ode_step_size` parameter
-- Use `'auto'` for uniform discretization based on time points
-- Good for when trajectory is well-behaved
-
-**Adaptive solvers** (dopri5, adams):
-- Automatically adjust step size based on error tolerance
-- Use `ode_rtol` and `ode_atol` for control
-- Better for stiff or complex dynamics
-
-### GRU ODE Notes
-
-The GRU-based ODE maintains hidden state across time steps:
-- Hidden state automatically resets before each trajectory
-- Provides smooth dynamics with memory of past states
-- Best for modeling developmental processes
-
-### CPU vs GPU for ODE
-
-ODE solving runs on CPU for computational efficiency:
-- torchdiffeq is CPU-optimized for small latent dimensions
-- Observed 2-3x speedup vs GPU for typical use cases
-- Avoids GPU memory pressure
 
 ## Citation
 
@@ -239,19 +173,20 @@ If you use Liora in your research, please cite:
   title = {Liora: Lorentz Information ODE-Regularized Variational Autoencoder},
   author = {Zeyu Fu},
   year = {2025},
-  url = {https://github.com/PeterPonyu/liora}
+  url = {https://github.com/PeterPonyu/Liora}
 }
 ```
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## Contact
+## Support
 
-- Issues: https://github.com/PeterPonyu/liora/issues
-- Email: fuzeyu99@126.com
+- **Issues**: [GitHub Issues](https://github.com/PeterPonyu/Liora/issues)
+- **Email**: fuzeyu99@126.com
+- **Documentation**: [GitHub Repository](https://github.com/PeterPonyu/Liora)
