@@ -1,55 +1,39 @@
 """
-统一的基础模型接口
-提供一致的训练、推理和潜在表示提取接口
+Unified base model interface for single-cell gene expression models
+Provides consistent training, inference, and latent extraction
 """
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any, Iterator
 from abc import ABC, abstractmethod
 import numpy as np
 from pathlib import Path
-import json
+import inspect
 
 
 class BaseModel(ABC, nn.Module):
     """
-    所有模型的基类，定义统一的接口
+    Abstract base class for single-cell models
     
-    这是一个抽象基类，所有单细胞基因表达模型都应继承此类。
-    它提供了统一的训练、验证、潜在表示提取等功能。
+    Defines unified interface for:
+    - Training with early stopping
+    - Validation
+    - Latent representation extraction
+    - Model checkpointing
     
-    Attributes:
-        input_dim (int): 输入特征维度（基因数）
-        latent_dim (int): 潜在空间维度
-        hidden_dims (list): 隐藏层维度列表
-        model_name (str): 模型名称
+    Subclasses must implement: encode(), decode(), forward(), compute_loss()
     
-    Examples:
-        >>> # 定义一个自定义模型
-        >>> class MyModel(BaseModel):
-        ...     def __init__(self, input_dim, latent_dim):
-        ...         super().__init__(input_dim, latent_dim)
-        ...         self.encoder = nn.Linear(input_dim, latent_dim)
-        ...         self.decoder = nn.Linear(latent_dim, input_dim)
-        ...     
-        ...     def encode(self, x):
-        ...         return self.encoder(x)
-        ...     
-        ...     def decode(self, z):
-        ...         return self.decoder(z)
-        ...     
+    Example:
+        >>> class MyVAE(BaseModel):
+        ...     def encode(self, x): return self.encoder(x)
+        ...     def decode(self, z): return self.decoder(z)
         ...     def forward(self, x, **kwargs):
         ...         z = self.encode(x)
-        ...         recon = self.decode(z)
-        ...         return {'latent': z, 'reconstruction': recon}
-        ...     
+        ...         return {'latent': z, 'reconstruction': self.decode(z)}
         ...     def compute_loss(self, x, outputs, **kwargs):
         ...         recon_loss = F.mse_loss(outputs['reconstruction'], x)
         ...         return {'total_loss': recon_loss, 'recon_loss': recon_loss}
-        >>> 
-        >>> model = MyModel(2000, 10)
-        >>> history = model.fit(train_loader, val_loader, epochs=100)
     """
     
     def __init__(self, 
@@ -58,17 +42,11 @@ class BaseModel(ABC, nn.Module):
                  hidden_dims: list = None,
                  model_name: str = "base_model"):
         """
-        初始化基础模型
-        
         Args:
-            input_dim (int): 输入特征维度（通常是基因数）
-            latent_dim (int): 潜在空间维度
-            hidden_dims (list, optional): 隐藏层维度列表。默认为 [512, 256]
-            model_name (str, optional): 模型名称。默认为 "base_model"
-        
-        Examples:
-            >>> model = BaseModel(input_dim=2000, latent_dim=10, 
-            ...                   hidden_dims=[512, 256, 128])
+            input_dim: Input feature dimension (number of genes)
+            latent_dim: Latent space dimension
+            hidden_dims: Hidden layer dimensions (default: [512, 256])
+            model_name: Model identifier
         """
         super().__init__()
         self.input_dim = input_dim
@@ -77,57 +55,38 @@ class BaseModel(ABC, nn.Module):
         self.model_name = model_name
         
     @abstractmethod
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        编码输入为潜在表示
-        
-        Args:
-            x (torch.Tensor): 输入张量，形状为 [batch_size, input_dim]
-            
-        Returns:
-            torch.Tensor: 潜在表示，形状为 [batch_size, latent_dim]
-        
-        Examples:
-            >>> x = torch.randn(32, 2000)  # 32个细胞，2000个基因
-            >>> z = model.encode(x)  # [32, 10]
-        """
-        pass
-    
+    def encode(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Encode x -> z"""
+        raise NotImplementedError
+
     @abstractmethod
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        """
-        从潜在表示解码
-        
-        Args:
-            z (torch.Tensor): 潜在表示，形状为 [batch_size, latent_dim]
-            
-        Returns:
-            torch.Tensor: 重构输出，形状为 [batch_size, input_dim]
-        
-        Examples:
-            >>> z = torch.randn(32, 10)
-            >>> recon = model.decode(z)  # [32, 2000]
-        """
-        pass
+    def decode(self, z: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Decode z -> reconstruction"""
+        raise NotImplementedError
+
+    def _filter_kwargs_for(self, fn, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter kwargs to match callable signature (if no **kwargs, only pass accepted args)"""
+        try:
+            sig = inspect.signature(fn)
+        except (TypeError, ValueError):
+            return {}
+
+        params = sig.parameters
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            return kwargs
+        return {k: v for k, v in kwargs.items() if k in params}
     
     @abstractmethod
     def forward(self, x: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         """
-        前向传播
+        Forward pass
         
         Args:
-            x (torch.Tensor): 输入张量，形状为 [batch_size, input_dim]
-            **kwargs: 额外参数（如 batch_id, labels 等）
+            x: Input [batch_size, input_dim]
+            **kwargs: Additional args (batch_id, labels, etc.)
             
         Returns:
-            Dict[str, torch.Tensor]: 包含以下键的字典：
-                - 'latent': 潜在表示
-                - 'reconstruction' 或模型特定的输出
-        
-        Examples:
-            >>> x = torch.randn(32, 2000)
-            >>> outputs = model(x)
-            >>> z = outputs['latent']
+            Dict with 'latent' and model-specific outputs (e.g., 'reconstruction')
         """
         pass
     
@@ -135,132 +94,87 @@ class BaseModel(ABC, nn.Module):
     def compute_loss(self, x: torch.Tensor, outputs: Dict[str, torch.Tensor], 
                      **kwargs) -> Dict[str, torch.Tensor]:
         """
-        计算损失函数
+        Compute loss
         
         Args:
-            x (torch.Tensor): 输入张量，形状为 [batch_size, input_dim]
-            outputs (Dict[str, torch.Tensor]): forward() 的输出
-            **kwargs: 额外参数
+            x: Input [batch_size, input_dim]
+            outputs: forward() output dict
+            **kwargs: Additional args
             
         Returns:
-            Dict[str, torch.Tensor]: 包含以下键的字典：
-                - 'total_loss': 总损失（必须）
-                - 'recon_loss': 重构损失
-                - 其他模型特定的损失（如 'kl_loss', 'adversarial_loss' 等）
-        
-        Examples:
-            >>> x = torch.randn(32, 2000)
-            >>> outputs = model(x)
-            >>> losses = model.compute_loss(x, outputs)
-            >>> print(losses['total_loss'].item())
+            Dict with 'total_loss' (required) and other losses (e.g., 'recon_loss', 'kl_loss')
         """
         pass
     
-    def fit(self,
+    def fit(
+            self,
             train_loader: DataLoader,
             val_loader: Optional[DataLoader] = None,
             epochs: int = 100,
             lr: float = 1e-3,
             device: str = 'cuda',
             save_path: Optional[str] = None,
-            patience: int = 10,
+            patience: int = 25,
             verbose: int = 1,
+            verbose_every: int = 1,
             **kwargs) -> Dict[str, list]:
         """
-        统一的训练接口
+        Train with optional validation and early stopping
         
         Args:
-            train_loader (DataLoader): 训练数据加载器
-            val_loader (DataLoader, optional): 验证数据加载器。默认为 None
-            epochs (int, optional): 训练轮数。默认为 100
-            lr (float, optional): 学习率。默认为 1e-3
-            device (str, optional): 训练设备（'cuda' 或 'cpu'）。默认为 'cuda'
-            save_path (str, optional): 模型保存路径。默认为 None（不保存）
-            patience (int, optional): 早停耐心值。默认为 10
-            verbose (int, optional): 日志详细程度。
-                - 0: 不输出任何信息
-                - 1: 仅输出每个 epoch 的损失（默认）
-                - 2: 输出详细的批次级别信息
-            **kwargs: 额外的训练参数（如 beta, weight_decay 等）
+            train_loader: Training DataLoader
+            val_loader: Validation DataLoader (enables early stopping)
+            epochs: Maximum epochs
+            lr: Learning rate
+            device: 'cuda' or 'cpu'
+            save_path: Path to save best checkpoint (by val loss)
+            patience: Early stopping patience
+            verbose: 0=quiet, 1=epoch logs, 2=epoch+batch logs
+            verbose_every: Print frequency for epoch logs
+            **kwargs: Forwarded to forward()/compute_loss() and optimizer weight_decay
             
         Returns:
-            Dict[str, list]: 训练历史字典，包含：
-                - 'train_loss': 训练损失列表
-                - 'val_loss': 验证损失列表（如果提供了 val_loader）
-                - 'train_recon_loss': 训练重构损失列表
-                - 'val_recon_loss': 验证重构损失列表（如果提供了 val_loader）
-        
-        Examples:
-            >>> # 基础训练
-            >>> model = create_my_model(input_dim=2000, latent_dim=10)
-            >>> history = model.fit(
-            ...     train_loader=train_loader,
-            ...     val_loader=val_loader,
-            ...     epochs=100,
-            ...     lr=1e-3,
-            ...     device='cuda',
-            ...     verbose=1  # 仅输出每个 epoch 的损失
-            ... )
-            >>> 
-            >>> # 无验证集训练
-            >>> history = model.fit(
-            ...     train_loader=train_loader,
-            ...     epochs=50,
-            ...     lr=5e-4,
-            ...     verbose=0  # 不输出任何信息
-            ... )
-            >>> 
-            >>> # 保存最好的模型
-            >>> history = model.fit(
-            ...     train_loader=train_loader,
-            ...     val_loader=val_loader,
-            ...     epochs=200,
-            ...     save_path='./checkpoints/best_model.pt',
-            ...     patience=20,
-            ...     verbose=2  # 详细输出
-            ... )
-        
-        Notes:
-            - 如果提供了 val_loader，会根据验证损失进行早停
-            - 学习率会根据验证损失动态调整
-            - 如果设置了 save_path，最好的模型会自动保存
+            history: Dict with train/val loss curves
         """
+        if verbose_every is None or verbose_every < 1:
+            verbose_every = 1
+
         self.to(device)
         optimizer = torch.optim.Adam(
-            self.parameters(), 
-            lr=lr, 
+            self.parameters(),
+            lr=lr,
             weight_decay=kwargs.get('weight_decay', 0.0)
         )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='min', factor=0.5, patience=5
         )
-        
+
         history = {
             'train_loss': [],
             'val_loss': [],
             'train_recon_loss': [],
             'val_recon_loss': []
         }
-        
+
         best_val_loss = float('inf')
         patience_counter = 0
-        
+
         for epoch in range(epochs):
-            # 训练
             train_metrics = self._train_epoch(train_loader, optimizer, device, verbose, **kwargs)
             history['train_loss'].append(train_metrics['total_loss'])
             history['train_recon_loss'].append(train_metrics['recon_loss'])
-            
-            # 验证
+
+            do_print = (verbose >= 1) and (
+                ((epoch + 1) % verbose_every == 0) or (epoch == 0) or (epoch + 1 == epochs)
+            )
+
             if val_loader is not None:
                 val_metrics = self._validate_epoch(val_loader, device, verbose, **kwargs)
                 history['val_loss'].append(val_metrics['total_loss'])
                 history['val_recon_loss'].append(val_metrics['recon_loss'])
-                
-                # 学习率调度
+
                 scheduler.step(val_metrics['total_loss'])
-                
-                # 早停
+
                 if val_metrics['total_loss'] < best_val_loss:
                     best_val_loss = val_metrics['total_loss']
                     patience_counter = 0
@@ -268,81 +182,53 @@ class BaseModel(ABC, nn.Module):
                         self.save_model(save_path)
                 else:
                     patience_counter += 1
-                    
+
+                if do_print:
+                    print(
+                        f"Epoch {epoch+1:3d}/{epochs} | "
+                        f"Train Loss: {train_metrics['total_loss']:8.4f} | "
+                        f"Val Loss: {val_metrics['total_loss']:8.4f}"
+                    )
+
                 if patience_counter >= patience:
                     if verbose >= 1:
-                        print(f"\n✓ 早停于第 {epoch+1} epoch")
+                        print(f"\n✓ Early stopping at epoch {epoch+1}")
                     break
-                    
-                # 根据 verbose 级别输出信息
-                if verbose >= 1:
-                    print(f"Epoch {epoch+1:3d}/{epochs} | "
-                          f"Train Loss: {train_metrics['total_loss']:8.4f} | "
-                          f"Val Loss: {val_metrics['total_loss']:8.4f}")
             else:
-                # 无验证集时的输出
-                if verbose >= 1:
-                    print(f"Epoch {epoch+1:3d}/{epochs} | "
-                          f"Train Loss: {train_metrics['total_loss']:8.4f}")
-        
+                if do_print:
+                    print(
+                        f"Epoch {epoch+1:3d}/{epochs} | "
+                        f"Train Loss: {train_metrics['total_loss']:8.4f}"
+                    )
+
         if verbose >= 1:
-            print("\n✓ 训练完成!")
-        
+            print("\n✓ Training finished!")
         return history
     
     def _prepare_batch(self, batch_data: Any, device: str) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """
-        将 DataLoader 输出标准化为 (x, batch_kwargs)
-        
-        子类可以重载该方法以处理特定的批次信息。
-        
-        Args:
-            batch_data: DataLoader 的输出
-            device (str): 目标设备
-            
-        Returns:
-            Tuple[torch.Tensor, Dict[str, Any]]: 
-                - x: 输入张量
-                - batch_kwargs: 额外的批次信息字典
-        
-        Examples:
-            >>> # 默认实现（仅提取 x）
-            >>> x, batch_kwargs = model._prepare_batch(batch_data, 'cuda')
-            >>> 
-            >>> # 自定义实现示例
-            >>> class MyModel(BaseModel):
-            ...     def _prepare_batch(self, batch_data, device):
-            ...         x, batch_id, labels = batch_data
-            ...         x = x.to(device).float()
-            ...         return x, {
-            ...             'batch_id': batch_id.to(device),
-            ...             'labels': labels.to(device)
-            ...         }
+        Prepare batch for training/inference
+        Supports Env DataLoader format: (x_norm, x_raw)
+        - Returns x = x_norm
+        - Passes x_raw via batch_kwargs["x_raw"] if shapes match
         """
         if isinstance(batch_data, (list, tuple)):
-            x = batch_data[0]
-        else:
-            x = batch_data
+            x = batch_data[0].to(device).float()
+            batch_kwargs: Dict[str, Any] = {}
 
-        x = x.to(device).float()
-        batch_kwargs: Dict[str, Any] = {}
-        return x, batch_kwargs
+            if len(batch_data) >= 2 and torch.is_tensor(batch_data[1]):
+                b1 = batch_data[1]
+                if torch.is_floating_point(b1) and b1.shape == x.shape:
+                    batch_kwargs["x_raw"] = b1.to(device).float()
+
+            return x, batch_kwargs
+
+        x = batch_data.to(device).float()
+        return x, {}
     
     def _train_epoch(self, train_loader: DataLoader, optimizer: torch.optim.Optimizer, 
                      device: str, verbose: int = 1, **kwargs) -> Dict[str, float]:
-        """
-        训练一个 epoch
-        
-        Args:
-            train_loader (DataLoader): 训练数据加载器
-            optimizer (torch.optim.Optimizer): 优化器
-            device (str): 训练设备
-            verbose (int): 日志详细程度
-            **kwargs: 额外参数
-            
-        Returns:
-            Dict[str, float]: 包含平均损失的字典
-        """
+        """Train single epoch"""
         self.train()
         total_loss = 0
         total_recon_loss = 0
@@ -363,7 +249,6 @@ class BaseModel(ABC, nn.Module):
             total_recon_loss += losses.get('recon_loss', loss).item()
             n_batches += 1
             
-            # 详细模式下输出批次信息
             if verbose >= 2:
                 print(f"  Batch {batch_idx+1}/{len(train_loader)} | Loss: {loss.item():.4f}")
         
@@ -374,18 +259,7 @@ class BaseModel(ABC, nn.Module):
     
     def _validate_epoch(self, val_loader: DataLoader, device: str, 
                        verbose: int = 1, **kwargs) -> Dict[str, float]:
-        """
-        验证一个 epoch
-        
-        Args:
-            val_loader (DataLoader): 验证数据加载器
-            device (str): 计算设备
-            verbose (int): 日志详细程度
-            **kwargs: 额外参数
-            
-        Returns:
-            Dict[str, float]: 包含平均损失的字典
-        """
+        """Validate single epoch"""
         self.eval()
         total_loss = 0
         total_recon_loss = 0
@@ -407,79 +281,66 @@ class BaseModel(ABC, nn.Module):
             'recon_loss': total_recon_loss / n_batches
         }
     
-    def extract_latent(self,
-                      data_loader: DataLoader,
-                      device: str = 'cuda',
-                      return_reconstructions: bool = False) -> Dict[str, np.ndarray]:
+    def _iter_loader(self, data_loader: DataLoader, device: str) -> Iterator[Tuple[torch.Tensor, Dict[str, Any]]]:
+        """Iterate over DataLoader yielding (x, batch_kwargs) on device"""
+        for batch_data in data_loader:
+            x, batch_kwargs = self._prepare_batch(batch_data, device)
+            yield x, batch_kwargs
+
+    def extract_latent(self, data_loader, device='cuda', return_reconstructions: bool = False):
         """
-        提取潜在表示（统一接口）
+        Extract latent representations
         
         Args:
-            data_loader (DataLoader): 数据加载器
-            device (str, optional): 计算设备。默认为 'cuda'
-            return_reconstructions (bool, optional): 是否返回重构结果。默认为 False
+            data_loader: DataLoader
+            device: Computation device
+            return_reconstructions: If True, also return reconstructions via decode()
             
         Returns:
-            Dict[str, np.ndarray]: 包含以下键的字典：
-                - 'latent': 潜在表示，形状为 [n_samples, latent_dim]
-                - 'reconstruction': 重构结果（如果 return_reconstructions=True）
-        
-        Examples:
-            >>> # 提取潜在表示
-            >>> result = model.extract_latent(test_loader, device='cuda')
-            >>> latent = result['latent']  # [n_samples, latent_dim]
-            >>> 
-            >>> # 同时获取重构结果
-            >>> result = model.extract_latent(
-            ...     test_loader,
-            ...     device='cuda',
-            ...     return_reconstructions=True
-            ... )
-            >>> latent = result['latent']
-            >>> recon = result['reconstruction']
-        
-        Notes:
-            - 在推理模式下执行（无梯度计算）
-            - 返回的数据已转移到 CPU 并转换为 NumPy 数组
+            Dict with 'latent' (and optionally 'reconstruction', 'labels')
         """
         self.eval()
         self.to(device)
-        
+
         latents = []
         reconstructions = [] if return_reconstructions else None
-        
+        labels = []
+
         with torch.no_grad():
-            for batch_data in data_loader:
-                if isinstance(batch_data, (list, tuple)):
-                    x = batch_data[0]
-                else:
-                    x = batch_data
-                    
-                x = x.to(device).float()
-                
-                z = self.encode(x)
-                latents.append(z.cpu().numpy())
-                
+            for x, batch_kwargs in self._iter_loader(data_loader, device):
+                enc_kwargs = self._filter_kwargs_for(self.encode, batch_kwargs)
+                z = self.encode(x, **enc_kwargs)
+                latents.append(z.detach().cpu().numpy())
+
+                if "y" in batch_kwargs and batch_kwargs["y"] is not None:
+                    labels.append(batch_kwargs["y"].detach().cpu().numpy())
+
                 if return_reconstructions:
-                    recon = self.decode(z)
-                    reconstructions.append(recon.cpu().numpy())
-        
-        result = {'latent': np.concatenate(latents, axis=0)}
+                    try:
+                        dec_kwargs = self._filter_kwargs_for(self.decode, batch_kwargs)
+                        recon = self.decode(z, **dec_kwargs)
+                    except NotImplementedError:
+                        out_kwargs = self._filter_kwargs_for(self.forward, batch_kwargs)
+                        out = self.forward(x, **out_kwargs)
+                        if isinstance(out, dict) and "reconstruction" in out:
+                            recon = out["reconstruction"]
+                        else:
+                            raise NotImplementedError(
+                                f"{self.__class__.__name__} does not implement decode(), "
+                                f"and forward() did not return outputs['reconstruction']. "
+                                f"Disable return_reconstructions or implement decode()/reconstruction."
+                            )
+                    reconstructions.append(recon.detach().cpu().numpy())
+
+        result = {"latent": np.concatenate(latents, axis=0)}
+        if len(labels) > 0:
+            result["labels"] = np.concatenate(labels, axis=0)
         if return_reconstructions:
-            result['reconstruction'] = np.concatenate(reconstructions, axis=0)
-            
+            result["reconstruction"] = np.concatenate(reconstructions, axis=0)
         return result
     
     def save_model(self, path: str):
-        """
-        保存模型权重和配置
-        
-        Args:
-            path (str): 保存路径
-        
-        Examples:
-            >>> model.save_model('./checkpoints/my_model.pt')
-        """
+        """Save model weights and config"""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         
@@ -494,18 +355,7 @@ class BaseModel(ABC, nn.Module):
         }, path)
     
     def load_model(self, path: str) -> Dict[str, Any]:
-        """
-        加载模型权重和配置
-        
-        Args:
-            path (str): 模型路径
-            
-        Returns:
-            Dict[str, Any]: 模型配置
-        
-        Examples:
-            >>> config = model.load_model('./checkpoints/my_model.pt')
-        """
+        """Load model weights and config"""
         checkpoint = torch.load(path, map_location='cpu')
         self.load_state_dict(checkpoint['model_state_dict'])
         return checkpoint.get('config', {})
