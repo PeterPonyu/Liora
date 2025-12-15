@@ -132,7 +132,8 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
             )
             t_sorted = torch.tensor(t_sorted, dtype=torch.float32)
             q_z_sorted = q_z[sort_idx]
-            z0 = q_z_sorted[0]
+            # Initial condition must be 2D (batch, dim)
+            z0 = q_z_sorted[0].unsqueeze(0)
             # Reset hidden state if ODE has memory
             if hasattr(self.nn.ode_solver, 'reset_hidden'):
                 self.nn.ode_solver.reset_hidden()
@@ -143,6 +144,9 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
                 rtol=getattr(self.nn, 'ode_rtol', None),
                 atol=getattr(self.nn, 'ode_atol', None),
             )
+            # solve_ode returns (T, 1, D) → squeeze batch dim
+            q_z_ode = q_z_ode.squeeze(1)
+            # Reorder back to original cell order
             q_z_ode = q_z_ode[sort_idxr]
             
             # Weighted combination
@@ -167,7 +171,7 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
             )
             t_sorted = torch.tensor(t_sorted, dtype=torch.float32)
             q_z_sorted = q_z[sort_idx]
-            z0 = q_z_sorted[0]
+            z0 = q_z_sorted[0].unsqueeze(0)
             if hasattr(self.nn.ode_solver, 'reset_hidden'):
                 self.nn.ode_solver.reset_hidden()
             q_z_ode = self.nn.solve_ode(
@@ -177,6 +181,7 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
                 rtol=getattr(self.nn, 'ode_rtol', None),
                 atol=getattr(self.nn, 'ode_atol', None),
             )
+            q_z_ode = q_z_ode.squeeze(1)
             q_z_ode = q_z_ode[sort_idxr]
             
             # Bottleneck on both paths

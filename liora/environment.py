@@ -10,6 +10,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import LabelEncoder
 import torch
 from torch.utils.data import DataLoader, TensorDataset
+from typing import Optional
 
 
 def is_raw_counts(X, threshold=0.5):
@@ -125,6 +126,20 @@ class Env(LioraModel, envMixin):
         test_size=0.15,
         batch_size=128,
         random_seed=42,
+        # Encoder selection and attention hyperparameters
+        encoder_type: str = "mlp",
+        attn_embed_dim: int = 64,
+        attn_num_heads: int = 4,
+        attn_num_layers: int = 2,
+        attn_seq_len: int = 32,
+        # ODE function and solver parameters
+        ode_type: str = "time_mlp",
+        ode_time_cond: str = "concat",
+        ode_hidden_dim: Optional[int] = None,
+        ode_solver_method: str = "rk4",
+        ode_step_size: Optional[float] = None,
+        ode_rtol: Optional[float] = None,
+        ode_atol: Optional[float] = None,
         **kwargs
     ):
         # Store configuration
@@ -162,6 +177,18 @@ class Env(LioraModel, envMixin):
             use_ode=use_ode,
             vae_reg=vae_reg,
             ode_reg=ode_reg,
+            encoder_type=encoder_type,
+            attn_embed_dim=attn_embed_dim,
+            attn_num_heads=attn_num_heads,
+            attn_num_layers=attn_num_layers,
+            attn_seq_len=attn_seq_len,
+            ode_type=ode_type,
+            ode_time_cond=ode_time_cond,
+            ode_hidden_dim=ode_hidden_dim,
+            ode_solver_method=ode_solver_method,
+            ode_step_size=ode_step_size,
+            ode_rtol=ode_rtol,
+            ode_atol=ode_atol,
             **kwargs
         )
         

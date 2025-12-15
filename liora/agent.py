@@ -99,6 +99,30 @@ class Liora(Env):
         Random seed for reproducibility
     device : torch.device, optional
         Computation device (auto-detects CUDA if available)
+    encoder_type : str, default='mlp'
+        Encoder backbone: 'mlp' (default) or 'transformer'
+    attn_embed_dim : int, default=64
+        Embedding dimension for transformer-based encoder
+    attn_num_heads : int, default=4
+        Number of attention heads for transformer encoder
+    attn_num_layers : int, default=2
+        Number of transformer encoder layers
+    attn_seq_len : int, default=32
+        Pseudo-sequence length used in transformer encoder
+    ode_type : str, default='time_mlp'
+        ODE function type: 'legacy', 'time_mlp', or 'gru'
+    ode_time_cond : str, default='concat'
+        Time conditioning strategy for 'time_mlp' ODE: 'concat', 'film', or 'add'
+    ode_hidden_dim : int, optional
+        Hidden dimension for ODE function (defaults to hidden_dim when None)
+    ode_solver_method : str, default='rk4'
+        ODE solver method: 'rk4' (fixed step) or 'dopri5' (adaptive)
+    ode_step_size : float, optional
+        Step size for fixed-step solvers (e.g., 'rk4'); use 'auto' to infer
+    ode_rtol : float, optional
+        Relative tolerance for adaptive solvers (e.g., 'dopri5')
+    ode_atol : float, optional
+        Absolute tolerance for adaptive solvers (e.g., 'dopri5')
     
     Attributes
     ----------
