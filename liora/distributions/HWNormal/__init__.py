@@ -1,6 +1,9 @@
-"""Hyperboloid Wrapped Normal Distribution (Lorentz Model) for GM-VAE"""
+"""
+Hyperbolic Wrapped Normal Distribution
+Wrapped normal distribution on hyperbolic space using Lorentz model
+"""
 
-from .HWNormal import Distribution
+from .distribution import Distribution
 from .layers import VanillaEncoderLayer, VanillaDecoderLayer
 from .prior import get_prior
 

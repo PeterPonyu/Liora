@@ -1,8 +1,12 @@
-"""Poincaré Ball Normal Distribution for GM-VAE"""
+"""
+Poincaré Normal Distribution
+Wrapped normal distribution on the Poincaré ball model of hyperbolic space
+"""
 
-from .PoincareNormal import Distribution
+from .distribution import Distribution
 from .layers import VanillaEncoderLayer, VanillaDecoderLayer
 from .prior import get_prior
+
 
 __all__ = [
     'Distribution',

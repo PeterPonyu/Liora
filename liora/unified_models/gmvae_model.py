@@ -1,4 +1,3 @@
-
 """
 GM-VAE的完整PyTorch实现
 支持5种几何分布的几何变分自编码器
@@ -41,7 +40,6 @@ from liora.distributions.LearnablePGMNormal import (
     ExpEncoderLayer as LearnablePGMExpEncoderLayer,
     VanillaDecoderLayer as LearnablePGMVanillaDecoderLayer,
     LogDecoderLayer as LearnablePGMLogDecoderLayer,
-    get_prior as get_learnable_pgm_prior
 )
 
 from liora.distributions.HWNormal import (
@@ -59,6 +57,30 @@ class SimpleArgs:
         self.c = c  # Curvature parameter
 
 
+def get_learnable_pgm_prior_fixed(args):
+    """
+    Fixed prior for LearnablePGM distribution
+    Creates proper 3D mean tensor [1, D, 3] for (alpha, log_beta_square, log_c)
+    """
+    mean = torch.zeros(
+        [1, args.latent_dim, 3],
+        device=args.device
+    )
+    mean[..., 0] = 0.0  # alpha
+    mean[..., 1] = 0.0  # log_beta_square
+    mean[..., 2] = torch.log(torch.tensor(abs(args.c), device=args.device))  # log_c (>0)
+
+    # log_gamma_square (log variance of Gamma) – any finite value is OK with fixed denom>0
+    covar = torch.full(
+        [1, args.latent_dim],
+        0.0,
+        device=args.device
+    )
+
+    prior = LearnablePGMDistribution(mean, covar)
+    return prior
+
+
 # Distribution configuration mapping
 DISTRIBUTION_CONFIG = {
     'euclidean': {
@@ -67,9 +89,13 @@ DISTRIBUTION_CONFIG = {
         'decoder_layers': {'Vanilla': EuclideanDecoderLayer},
         'get_prior': get_euclidean_prior,
         'default_layer': 'Vanilla',
-        'param_count': 2,  # mean, logvar (scalar each)
-        'internal_multiplier': 2,  # Uses latent_dim * 2 internally
-        'output_shape': 'flat',  # [batch, latent_dim]
+        'param_count': 2,  # loc, scale
+        'loc_shape': 'flat',  # [B, D]
+        'scale_shape': 'flat',  # [B, D]
+        'sample_shape': 'flat',  # [B, D]
+        'requires_even': False,
+        'internal_dim_factor': 1.0,  # Use latent_dim directly
+        'decoder_output_shape': 'doubled_flat',  # VanillaDecoderLayer: [B, D*2]
     },
     'poincare': {
         'distribution_class': PoincareDistribution,
@@ -77,9 +103,13 @@ DISTRIBUTION_CONFIG = {
         'decoder_layers': {'Vanilla': PoincareDecoderLayer},
         'get_prior': get_poincare_prior,
         'default_layer': 'Vanilla',
-        'param_count': 2,  # mean (2D point), sigma (scalar per point)
-        'internal_multiplier': 2,  # latent_dim must be even
-        'output_shape': '2d',  # [batch, latent_dim//2, 2]
+        'param_count': 2,  # loc, scale
+        'loc_shape': '2d',  # [B, D//2, 2]
+        'scale_shape': 'vector',  # [B, D//2]
+        'sample_shape': '2d',  # [B, D//2, 2]
+        'requires_even': True,
+        'internal_dim_factor': 0.5,  # latent_dim // 2 = number of points
+        'decoder_output_shape': 'geometry_2d',  # VanillaDecoderLayer: [B, D//2, 2]
     },
     'pgm': {
         'distribution_class': PGMDistribution,
@@ -93,9 +123,13 @@ DISTRIBUTION_CONFIG = {
         },
         'get_prior': get_pgm_prior,
         'default_layer': 'Vanilla',
-        'param_count': 2,  # mean (alpha, log_beta_square), log_gamma_square
-        'internal_multiplier': 2,  # latent_dim must be even
-        'output_shape': '2d',  # [batch, latent_dim//2, 2]
+        'param_count': 2,  # loc, scale
+        'loc_shape': '2d',  # [B, D//2, 2] (alpha, log_beta_square)
+        'scale_shape': 'vector',  # [B, D//2]
+        'sample_shape': '2d',  # [B, D//2, 2]
+        'requires_even': True,
+        'internal_dim_factor': 0.5,
+        'decoder_output_shape': 'geometry_2d',  # GeoDecoderLayer: [B, D//2, 2]
     },
     'learnable_pgm': {
         'distribution_class': LearnablePGMDistribution,
@@ -107,11 +141,15 @@ DISTRIBUTION_CONFIG = {
             'Vanilla': LearnablePGMVanillaDecoderLayer,
             'Log': LearnablePGMLogDecoderLayer
         },
-        'get_prior': get_learnable_pgm_prior,
+        'get_prior': get_learnable_pgm_prior_fixed,  # ✅ Use fixed version
         'default_layer': 'Vanilla',
-        'param_count': 2,  # mean (alpha, log_beta_square, log_c), log_gamma_square
-        'internal_multiplier': 2,  # latent_dim must be even
-        'output_shape': '2d_extended',  # [batch, latent_dim//2, 3] for mean, but output as flat
+        'param_count': 2,  # loc, scale
+        'loc_shape': '3d',  # [B, D//2, 3] (alpha, log_beta_square, log_c)
+        'scale_shape': 'vector',  # [B, D//2]
+        'sample_shape': '2d',  # [B, D//2, 2] (samples in 2D after projection)
+        'requires_even': True,
+        'internal_dim_factor': 0.5,
+        'decoder_output_shape': 'flat',  # LogDecoderLayer: [B, D]
     },
     'hw': {
         'distribution_class': HWDistribution,
@@ -119,9 +157,13 @@ DISTRIBUTION_CONFIG = {
         'decoder_layers': {'Vanilla': HWDecoderLayer},
         'get_prior': get_hw_prior,
         'default_layer': 'Vanilla',
-        'param_count': 2,  # mean (3D Lorentz), sigma (2D)
-        'internal_multiplier': 2,  # latent_dim must be even
-        'output_shape': 'lorentz',  # [batch, latent_dim//2, 3] internally
+        'param_count': 2,  # loc, scale
+        'loc_shape': '3d',  # [B, D//2, 3] (Lorentz coordinates)
+        'scale_shape': '2d',  # [B, D//2, 2]
+        'sample_shape': '3d',  # [B, D//2, 3]
+        'requires_even': True,
+        'internal_dim_factor': 0.5,
+        'decoder_output_shape': 'geometry_3d',  # VanillaDecoderLayer: [B, D//2, 3]
     },
 }
 
@@ -139,6 +181,10 @@ class GMVAEEncoder(nn.Module):
         
         self.distribution = distribution
         self.config = DISTRIBUTION_CONFIG[distribution]
+        
+        # Validate latent_dim requirements
+        if self.config['requires_even'] and latent_dim % 2 != 0:
+            raise ValueError(f"{distribution} requires even latent_dim (got {latent_dim})")
         
         # Use default layer if not specified
         if layer_type is None:
@@ -166,14 +212,8 @@ class GMVAEEncoder(nn.Module):
         self.feature_dim = prev_dim
         
         # Create distribution-specific encoder layer
-        args = SimpleArgs(latent_dim, device, c)
-        
-        # Adjust latent_dim for distributions that use paired dimensions
-        if self.config['output_shape'] in ['2d', '2d_extended', 'lorentz']:
-            args.latent_dim = latent_dim // 2
-        elif self.config['output_shape'] == 'flat' and self.config['internal_multiplier'] == 2:
-            # Euclidean uses latent_dim * 2 internally
-            args.latent_dim = latent_dim // 2
+        internal_latent_dim = int(latent_dim * self.config['internal_dim_factor'])
+        args = SimpleArgs(internal_latent_dim, device, c)
         
         encoder_class = self.config['encoder_layers'][layer_type]
         self.variational_layer = encoder_class(args, self.feature_dim)
@@ -181,7 +221,7 @@ class GMVAEEncoder(nn.Module):
     def forward(self, x):
         """
         Returns distribution parameters based on the geometry type
-        Returns: tuple of parameters specific to each distribution
+        Returns: tuple of (loc, scale) specific to each distribution
         """
         features = self.feature_extractor(x)
         return self.variational_layer(features)
@@ -200,6 +240,10 @@ class GMVAEDecoder(nn.Module):
         self.distribution = distribution
         self.config = DISTRIBUTION_CONFIG[distribution]
         
+        # Validate latent_dim requirements
+        if self.config['requires_even'] and latent_dim % 2 != 0:
+            raise ValueError(f"{distribution} requires even latent_dim (got {latent_dim})")
+        
         # Use default layer if not specified
         if layer_type is None:
             layer_type = self.config['default_layer']
@@ -210,21 +254,33 @@ class GMVAEDecoder(nn.Module):
         
         self.layer_type = layer_type
         self.latent_dim = latent_dim
+        self.loss_type = loss_type
         
         # Create distribution-specific decoder layer
-        args = SimpleArgs(latent_dim, device, c)
-        
-        # Adjust latent_dim for distributions that use paired dimensions
-        if self.config['output_shape'] in ['2d', '2d_extended', 'lorentz']:
-            args.latent_dim = latent_dim // 2
-        elif self.config['output_shape'] == 'flat' and self.config['internal_multiplier'] == 2:
-            args.latent_dim = latent_dim // 2
+        internal_latent_dim = int(latent_dim * self.config['internal_dim_factor'])
+        args = SimpleArgs(internal_latent_dim, device, c)
         
         decoder_class = self.config['decoder_layers'][layer_type]
         self.decode_layer = decoder_class(args)
         
-        # Decoder output is always flattened to latent_dim
-        decoder_input_dim = latent_dim
+        # ✅ Determine decoder input dimension based on actual output shape
+        decoder_output_shape = self.config.get('decoder_output_shape', 'flat')
+        
+        if decoder_output_shape == 'doubled_flat':
+            # Euclidean VanillaDecoderLayer: [B, D*2] -> take first half -> [B, D]
+            decoder_input_dim = latent_dim
+        elif decoder_output_shape == 'geometry_2d':
+            # Poincaré/PGM VanillaDecoderLayer: [B, D//2, 2] -> flatten -> [B, D]
+            decoder_input_dim = latent_dim
+        elif decoder_output_shape == 'geometry_3d':
+            # HW VanillaDecoderLayer: [B, D//2, 3] -> flatten -> [B, D//2*3]
+            # But we only use first 2 coords, so [B, D]
+            decoder_input_dim = latent_dim
+        elif decoder_output_shape == 'flat':
+            # LearnablePGM LogDecoderLayer: [B, D] -> [B, D]
+            decoder_input_dim = latent_dim
+        else:
+            decoder_input_dim = latent_dim
         
         # Build reconstruction network
         layers = []
@@ -247,10 +303,45 @@ class GMVAEDecoder(nn.Module):
         """
         Args:
             z: Latent representation in geometry-specific format
+               - Euclidean: [B, D]
+               - Poincaré: [B, D//2, 2]
+               - PGM: [B, D//2, 2]
+               - LearnablePGM: [B, D//2, 2]
+               - HW: [B, D//2, 3]
         Returns:
             Reconstruction [batch, output_dim] or [batch, output_dim*2] for NLL
         """
-        z_decoded = self.decode_layer(z)
+        z_decoded = self.decode_layer(z)  # Outputs geometry-specific shape
+        
+        # ✅ Handle different decoder output shapes properly
+        decoder_output_shape = self.config.get('decoder_output_shape', 'flat')
+        batch_size = z_decoded.size(0) if z_decoded.dim() > 0 else 1
+        
+        if decoder_output_shape == 'doubled_flat':
+            # Euclidean: [B, D*2] -> take first half -> [B, D]
+            if z_decoded.dim() == 2:
+                z_decoded = z_decoded[..., :z_decoded.size(-1)//2]
+        
+        elif decoder_output_shape == 'geometry_2d':
+            # Poincaré/PGM: [B, D//2, 2] -> flatten -> [B, D]
+            if z_decoded.dim() == 3:
+                z_decoded = z_decoded.reshape(batch_size, -1)
+        
+        elif decoder_output_shape == 'geometry_3d':
+            # HW: [B, D//2, 3] -> take first 2 coords -> [B, D//2, 2] -> flatten -> [B, D]
+            if z_decoded.dim() == 3:
+                z_decoded = z_decoded[..., :2]  # Take first 2 coordinates
+                z_decoded = z_decoded.reshape(batch_size, -1)
+        
+        elif decoder_output_shape == 'flat':
+            # LearnablePGM: [B, D] -> already flat
+            if z_decoded.dim() > 2:
+                z_decoded = z_decoded.reshape(batch_size, -1)
+        
+        # Final flatten if still multi-dimensional
+        if z_decoded.dim() > 2:
+            z_decoded = z_decoded.reshape(batch_size, -1)
+        
         return self.decoder_net(z_decoded)
 
 
@@ -279,6 +370,11 @@ class GMVAEModel(BaseModel):
         Args:
             input_dim: 输入维度
             latent_dim: 潜在空间总维度（统一标准：10表示10维输出）
+                - Euclidean: 直接使用10维
+                - Poincaré: 10维 = 5个2D点 (latent_dim必须是偶数)
+                - PGM: 10维 = 5个2D极坐标点 (latent_dim必须是偶数)
+                - LearnablePGM: 10维 = 5个2D点 (latent_dim必须是偶数)
+                - HW: 10维 = 对应内部使用5个3D Lorentz点 (latent_dim必须是偶数)
             hidden_dims: 隐藏层维度列表
             distribution: 分布类型
                 - 'euclidean': 欧几里得正态分布
@@ -287,17 +383,7 @@ class GMVAEModel(BaseModel):
                 - 'learnable_pgm': 可学习曲率的PGM
                 - 'hw': 超球面包裹正态分布
             encoder_layer: 编码器层类型 (None使用默认值)
-                - Euclidean: 'Vanilla'
-                - Poincaré: 'Vanilla'
-                - PGM: 'Vanilla', 'Geo'
-                - LearnablePGM: 'Vanilla', 'Exp'
-                - HW: 'Vanilla'
             decoder_layer: 解码器层类型 (None使用默认值)
-                - Euclidean: 'Vanilla'
-                - Poincaré: 'Vanilla'
-                - PGM: 'Vanilla', 'Geo'
-                - LearnablePGM: 'Vanilla', 'Log'
-                - HW: 'Vanilla'
             curvature: 曲率参数（用于PGM/LearnablePGM/HW）
             loss_type: 损失类型 ('BCE', 'MSE', 'NLL')
             model_name: 模型名称
@@ -313,10 +399,9 @@ class GMVAEModel(BaseModel):
         config = DISTRIBUTION_CONFIG[distribution]
         
         # Validate latent_dim for distributions requiring even dimensions
-        if config['output_shape'] in ['2d', '2d_extended', 'lorentz']:
-            if latent_dim % 2 != 0:
-                raise ValueError(f"latent_dim must be even for {distribution} distribution "
-                               f"(got {latent_dim})")
+        if config['requires_even'] and latent_dim % 2 != 0:
+            raise ValueError(f"latent_dim must be even for {distribution} distribution "
+                           f"(got {latent_dim})")
         
         super().__init__(input_dim, latent_dim, hidden_dims, model_name)
         
@@ -342,12 +427,8 @@ class GMVAEModel(BaseModel):
         )
         
         # Create prior distribution
-        args = SimpleArgs(
-            latent_dim // 2 if config['output_shape'] in ['2d', '2d_extended', 'lorentz'] 
-            else latent_dim // 2,
-            self.device,
-            curvature
-        )
+        internal_latent_dim = int(latent_dim * config['internal_dim_factor'])
+        args = SimpleArgs(internal_latent_dim, self.device, curvature)
         
         self.prior = config['get_prior'](args)
     
@@ -356,30 +437,62 @@ class GMVAEModel(BaseModel):
         return self.config['distribution_class'](*params)
     
     def _reshape_for_output(self, z):
-        """Reshape latent representation to [batch, latent_dim]"""
+        """
+        Reshape latent representation to [batch, latent_dim] for unified output
+        
+        Args:
+            z: Distribution samples in geometry-specific format
+        
+        Returns:
+            [B, latent_dim] - flattened representation
+        """
         if z.dim() == 2:
+            # Already flat (Euclidean)
             return z
-        # For multi-dimensional representations, flatten
-        return z.reshape(z.size(0), -1)
-    
-    def _reshape_for_decoder(self, z):
-        """Reshape latent representation for decoder input"""
+        
+        # For multi-dimensional representations, flatten to [B, D]
         batch_size = z.size(0)
         
-        if self.config['output_shape'] == 'flat':
+        if self.config['sample_shape'] == '2d':
+            # Poincaré, PGM, LearnablePGM: [B, D//2, 2] -> [B, D]
+            return z.reshape(batch_size, -1)
+        elif self.config['sample_shape'] == '3d':
+            # HW: [B, D//2, 3] -> take first 2 coords -> [B, D]
+            if self.distribution == 'hw':
+                return z[..., :2].reshape(batch_size, -1)
+            return z.reshape(batch_size, -1)
+        
+        return z.reshape(batch_size, -1)
+    
+    def _reshape_for_decoder(self, z):
+        """
+        Reshape latent representation from [B, latent_dim] to decoder input format
+        
+        Args:
+            z: [B, latent_dim]
+        
+        Returns:
+            Geometry-specific shape for decoder
+        """
+        batch_size = z.size(0)
+        
+        if self.config['sample_shape'] == 'flat':
+            # Euclidean: [B, D] -> [B, D]
             return z
-        elif self.config['output_shape'] == '2d':
-            # [batch, latent_dim] -> [batch, latent_dim//2, 2]
+        elif self.config['sample_shape'] == '2d':
+            # Poincaré, PGM, LearnablePGM: [B, D] -> [B, D//2, 2]
             return z.reshape(batch_size, -1, 2)
-        elif self.config['output_shape'] == '2d_extended':
-            # For LearnablePGM: [batch, latent_dim] -> [batch, latent_dim//2, 2]
-            # But samples come out as [batch, latent_dim//2, 2]
-            if z.dim() == 2:
-                return z.reshape(batch_size, -1, 2)
-            return z
-        elif self.config['output_shape'] == 'lorentz':
-            # For HW: samples come as [batch, latent_dim//2, 3]
-            return z
+        elif self.config['sample_shape'] == '3d':
+            # HW: [B, D] -> [B, D//2, 3]
+            if self.distribution == 'hw':
+                # Pad with zeros for the third coordinate
+                z_2d = z.reshape(batch_size, -1, 2)  # [B, D//2, 2]
+                z_3d = torch.cat([
+                    z_2d,
+                    torch.zeros(batch_size, z_2d.size(1), 1, device=z.device)
+                ], dim=-1)  # [B, D//2, 3]
+                return z_3d
+            return z.reshape(batch_size, -1, 3)
         
         return z
     
@@ -429,16 +542,20 @@ class GMVAEModel(BaseModel):
         
         # 解码
         if n_samples > 1:
-            # Flatten for decoding
-            if z.dim() == 3:  # [n_samples, batch, latent_dim]
+            # Flatten samples for batch processing
+            original_shape = z.shape
+            
+            if z.dim() == 3:  # [n_samples, batch, latent_dim] (Euclidean)
                 z_flat = z.reshape(-1, z.size(-1))
-            elif z.dim() == 4:  # [n_samples, batch, latent_dim//2, 2or3]
-                original_shape = z.shape
+                z_reshaped = z_flat
+            elif z.dim() == 4:  # [n_samples, batch, D//2, 2or3]
                 z_flat = z.reshape(-1, original_shape[-2], original_shape[-1])
+                z_reshaped = z_flat
             else:
                 z_flat = z.reshape(n_samples * x.size(0), -1)
+                z_reshaped = self._reshape_for_decoder(z_flat)
             
-            x_generated = self.decoder_net(z_flat)
+            x_generated = self.decoder_net(z_reshaped)
             
             # Reshape back
             x_generated = x_generated.view(n_samples, x.size(0), -1)
@@ -458,22 +575,12 @@ class GMVAEModel(BaseModel):
                      **kwargs) -> Dict[str, torch.Tensor]:
         """
         计算损失
-        
-        Args:
-            x: 输入数据
-            outputs: forward()的输出
-            beta: KL权重
-            n_samples: 采样数量
-            iwae: 是否使用IWAE
-            
-        Returns:
-            损失字典
         """
         x_generated = outputs['reconstruction']
         z = outputs['latent']
         variational = outputs['variational']
         
-        # ✅ 重构损失 - 使用mean保持尺度平衡
+        # 重构损失
         if self.loss_type == 'BCE':
             if n_samples > 1:
                 recon_loss = F.binary_cross_entropy_with_logits(
@@ -507,7 +614,20 @@ class GMVAEModel(BaseModel):
         else:
             raise ValueError(f"Unknown loss type: {self.loss_type}")
         
-        # ✅ KL散度 - 使用mean保持与重构损失相同的尺度
+        # ---------- FIX: prepare z for KL / log_prob ----------
+        # For manifold distributions (Poincaré, PGM, LearnablePGM, HW),
+        # their log_prob implementations expect a sample dimension K:
+        #   z: [K, B, ...]
+        # Our forward() stores z as [B, ...] when n_samples == 1.
+        z_kl = z
+        if (self.distribution in ('poincare', 'pgm', 'learnable_pgm', 'hw')
+                and n_samples == 1
+                and z.dim() >= 2
+                and z.shape[0] == x.shape[0]):  # z is [B, ...]
+            z_kl = z.unsqueeze(0)              # -> [1, B, ...]
+        # ------------------------------------------------------
+        
+        # KL散度
         if iwae == 0 or n_samples == 1:
             # Standard VAE loss
             if hasattr(variational, 'kl_div') and variational.kl_div is not None:
@@ -519,10 +639,11 @@ class GMVAEModel(BaseModel):
                     kl_loss = kl_div.mean()
             else:
                 # Compute KL from log probabilities
-                log_q = variational.log_prob(z)
-                log_p = self.prior.log_prob(z)
+                log_q = variational.log_prob(z_kl)
+                log_p = self.prior.log_prob(z_kl)
                 
                 if log_q.dim() > 1:
+                    # Sum over latent dims, mean over samples & batch
                     kl_loss = (log_q - log_p).sum(dim=-1).mean()
                 else:
                     kl_loss = (log_q - log_p).mean()
@@ -554,8 +675,7 @@ class GMVAEModel(BaseModel):
             'recon_loss': recon_loss_sum,
             'kl_loss': kl_loss_sum
         }
-
-
+    
 # 便捷的创建函数
 def create_gmvae_model(input_dim: int, latent_dim: int = 10, 
                        distribution: str = 'euclidean', **kwargs):
@@ -565,13 +685,9 @@ def create_gmvae_model(input_dim: int, latent_dim: int = 10,
     Args:
         input_dim: 输入维度
         latent_dim: 潜在空间总维度（10表示10维输出，与其他模型一致）
+            ⚠️ 注意：非欧几里得分布需要偶数维度
         distribution: 'euclidean', 'poincare', 'pgm', 'learnable_pgm', 'hw'
         **kwargs: 其他参数传递给GMVAEModel
-            - encoder_layer: 编码器层类型
-            - decoder_layer: 解码器层类型
-            - curvature: 曲率参数
-            - loss_type: 损失类型
-            - hidden_dims: 隐藏层维度
     
     Examples:
         >>> # Euclidean VAE with 10D latent space
@@ -580,52 +696,10 @@ def create_gmvae_model(input_dim: int, latent_dim: int = 10,
         >>> # Poincaré VAE with 10D latent space (5 points × 2 coords)
         >>> model = create_gmvae_model(2000, latent_dim=10, distribution='poincare')
         
-        >>> # PGM VAE with Geo layers
-        >>> model = create_gmvae_model(2000, latent_dim=10, distribution='pgm', 
-        ...                           encoder_layer='Geo', decoder_layer='Geo', 
-        ...                           curvature=-1.0)
-        
         >>> # LearnablePGM VAE with Exp/Log layers
         >>> model = create_gmvae_model(2000, latent_dim=10, distribution='learnable_pgm',
         ...                           encoder_layer='Exp', decoder_layer='Log')
-        
-        >>> # HW (Hyperboloid Wrapped) VAE
-        >>> model = create_gmvae_model(2000, latent_dim=10, distribution='hw')
     """
     return GMVAEModel(input_dim=input_dim, latent_dim=latent_dim, 
                      distribution=distribution, **kwargs)
 
-
-def get_available_distributions():
-    """返回所有可用的分布及其配置信息"""
-    info = {}
-    for dist_name, config in DISTRIBUTION_CONFIG.items():
-        info[dist_name] = {
-            'encoder_layers': list(config['encoder_layers'].keys()),
-            'decoder_layers': list(config['decoder_layers'].keys()),
-            'default_layer': config['default_layer'],
-            'requires_even_latent_dim': config['output_shape'] in ['2d', '2d_extended', 'lorentz']
-        }
-    return info
-
-
-def print_distribution_info():
-    """打印所有可用分布的详细信息"""
-    print("=" * 80)
-    print("GM-VAE: Available Geometric Distributions")
-    print("=" * 80)
-    
-    info = get_available_distributions()
-    for dist_name, dist_info in info.items():
-        print(f"\n📊 {dist_name.upper()}")
-        print(f"   Encoder layers: {', '.join(dist_info['encoder_layers'])}")
-        print(f"   Decoder layers: {', '.join(dist_info['decoder_layers'])}")
-        print(f"   Default layer: {dist_info['default_layer']}")
-        print(f"   Requires even latent_dim: {dist_info['requires_even_latent_dim']}")
-    
-    print("\n" + "=" * 80)
-
-
-# 自动打印信息（可选）
-if __name__ == "__main__":
-    print_distribution_info()

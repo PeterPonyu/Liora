@@ -1,7 +1,11 @@
-"""Learnable Curvature PGM Normal Distribution for GM-VAE"""
+"""
+Learnable Pseudo-Gaussian Mixture Normal Distribution
+PGM Normal with learnable concentration parameters and coordinate transformations
+"""
 
-from .LearnablePGMNormal import Distribution
+from .distribution import Distribution
 from .layers import (
+    EncoderLayer,
     VanillaEncoderLayer,
     ExpEncoderLayer,
     VanillaDecoderLayer,
@@ -11,6 +15,7 @@ from .prior import get_prior
 
 __all__ = [
     'Distribution',
+    'EncoderLayer',
     'VanillaEncoderLayer',
     'ExpEncoderLayer',
     'VanillaDecoderLayer',
