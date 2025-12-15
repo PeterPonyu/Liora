@@ -224,18 +224,55 @@ class HyperbolicRadius(dist.Distribution):
         return impl_rsample.apply(value, self.scale, self.c, self.dim)
 
     def sample(self, sample_shape=torch.Size()):
-        if sample_shape == torch.Size(): sample_shape=torch.Size([1])
+        if sample_shape == torch.Size():
+            sample_shape = torch.Size([1])
+
         with torch.no_grad():
             mean = self.mean
             stddev = self.stddev
-            if torch.isnan(stddev).any(): stddev[torch.isnan(stddev)] = self.scale[torch.isnan(stddev)]
-            if torch.isnan(mean).any(): mean[torch.isnan(mean)] = ((self.dim - 1) * self.scale.pow(2) * self.c.sqrt())[torch.isnan(mean)]
-            steps = torch.linspace(0.1, 3, 10).to(self.device)
+            if torch.isnan(stddev).any():
+                stddev[torch.isnan(stddev)] = self.scale[torch.isnan(stddev)]
+            if torch.isnan(mean).any():
+                mean[torch.isnan(mean)] = ((self.dim - 1) * self.scale.pow(2) * self.c.sqrt())[torch.isnan(mean)]
+
+            eps = 1e-8
+            steps = torch.linspace(0.1, 3, 10, device=self.device)
             steps = torch.cat((-steps.flip(0), steps))
-            xi = [mean + s * torch.min(stddev, .95 * mean / 3) for s in steps]
-            xi = torch.cat(xi, dim=1)
+
+            step_scale = torch.min(stddev, 0.95 * mean / 3)
+            step_scale = torch.where(torch.isfinite(step_scale) & (step_scale > 0), step_scale, stddev.clamp_min(eps))
+
+            xi = torch.cat([mean + s * step_scale for s in steps], dim=1)
+            xi = xi.clamp_min(eps)
+            xi, _ = xi.sort(dim=1)
+
+            # Ensure left derivative > 0 by pushing leftmost close to 0+
+            xi[:, :1] = xi[:, :1].clamp_min(eps)
+
+            # Ensure right derivative < 0 by expanding rightmost until it flips
+            # (asymptotically, mode scales like ~(dim-1)*sqrt(c)*scale^2)
+            approx_mode = ((self.dim - 1) * self.c.sqrt() * self.scale.pow(2)).clamp_min(eps)
+            xi[:, -1:] = torch.maximum(xi[:, -1:], 2.0 * approx_mode + eps)
+
+            for _ in range(60):
+                g_right = self.grad_log_prob(xi[:, -1:])
+                if (g_right < 0).all():
+                    break
+                xi[:, -1:] = (xi[:, -1:] * 2.0).clamp(max=1e6)
+
+            # Final sanity: if still not bracketed, make it explicit (better error message)
+            g_left = self.grad_log_prob(xi[:, :1])
+            g_right = self.grad_log_prob(xi[:, -1:])
+            if not (g_left > 0).all() or not (g_right < 0).all():
+                raise IOError(
+                    "ARS anchor bracketing failed after expansion. "
+                    f"g_left_min={float(g_left.min())}, g_right_max={float(g_right.max())}, "
+                    f"scale_max={float(self.scale.max())}, mean_max={float(mean.max())}"
+                )
+
             ars = ARS(self.log_prob, self.grad_log_prob, self.device, xi=xi, ns=20, lb=0)
             value = ars.sample(sample_shape)
+
         return value
 
     def __while_loop(self, logM, proposal, sample_shape):
