@@ -7,12 +7,13 @@ from torch.distributions import Normal
 class Distribution():
     def __init__(self, mean, sigma) -> None:
         self.mean = mean  # (1, *, 3)
-        self.sigma = sigma  # (*, 2)
+        self.sigma = torch.nan_to_num(sigma, nan=1.0, posinf=1.0, neginf=1.0).clamp_min(1e-8)
 
         self.latent_dim = 2
         self.base = Normal(
             torch.zeros([*self.sigma.shape[:-1], 2], device=self.mean.device),
-            self.sigma
+            self.sigma,
+            validate_args=False,
         )
         self.manifold = geoopt.manifolds.Lorentz()
         self.origin = self.manifold.origin(
@@ -22,16 +23,23 @@ class Distribution():
 
         self.kl_div = None
 
-    def log_prob(self, z):  # (N, *, 2)
-        u = self.manifold.logmap(self.mean, z)  # (N, *, 3)
+    def log_prob(self, z):
+        eps = 1e-8
+
+        u = self.manifold.logmap(self.mean, z)
+        u = torch.nan_to_num(u, nan=0.0, posinf=0.0, neginf=0.0)
+
         v = self.manifold.transp(self.mean, self.origin, u)
-        log_prob_v = self.base.log_prob(v[..., 1:]).sum(dim=-1)  # (N, *)
+        v = torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
 
-        r = self.manifold.norm(u)  # (N, *)
-        log_det = (self.latent_dim - 1) * (torch.sinh(r).log() - r.log())  # (N, *)
+        v_spatial = v[..., 1:]
+        log_prob_v = self.base.log_prob(v_spatial).sum(dim=-1)
 
-        log_prob_z = log_prob_v - log_det  # (N, *)
-        return log_prob_z
+        r = self.manifold.norm(u).clamp_min(eps)
+        ratio = (torch.sinh(r) / r).clamp_min(eps)
+        log_det = (self.latent_dim - 1) * torch.log(ratio)
+
+        return log_prob_v - log_det
 
     def rsample(self, N):
         v = self.base.rsample([N])  # (N, *, 2)
