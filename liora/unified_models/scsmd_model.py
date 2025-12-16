@@ -6,11 +6,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from typing import Dict, Optional, Any
 from sklearn.cluster import KMeans
 from scipy.sparse import issparse
 from .base_model import BaseModel
-
 
 class myBottleneck(nn.Module):
     """ResNet bottleneck block"""
@@ -42,10 +42,19 @@ class myBottleneck(nn.Module):
 class NBLoss(nn.Module):
     """Negative Binomial loss"""
     def forward(self, x, mean, disp):
-        eps = 1e-10
-        t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
-        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
-        return torch.mean(t1 + t2)
+        eps = 1e-8
+
+        x = torch.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0).clamp_min(0.0)
+        mean = torch.nan_to_num(mean, nan=eps, posinf=1e6, neginf=eps).clamp(min=eps, max=1e6)
+        disp = torch.nan_to_num(disp, nan=eps, posinf=1e4, neginf=eps).clamp(min=eps, max=1e4)
+
+        # compute in float64 for stability
+        x64, mean64, disp64 = x.double(), mean.double(), disp.double()
+        t1 = torch.lgamma(disp64 + eps) + torch.lgamma(x64 + 1.0) - torch.lgamma(x64 + disp64 + eps)
+        t2 = (disp64 + x64) * torch.log1p(mean64 / (disp64 + eps)) + x64 * (torch.log(disp64 + eps) - torch.log(mean64 + eps))
+        out = t1 + t2
+        out = torch.where(torch.isfinite(out), out, torch.zeros_like(out))
+        return out.mean().to(x.dtype)
 
 
 class AutoEncoder(nn.Module):
@@ -137,9 +146,10 @@ class AutoEncoder(nn.Module):
         out = self.layer3(out)
         out = out.view(b, -1)
         u = self.fc_encode(out)
-
-        mean = torch.exp(self.fc_mean(u)).clamp(min=1e-6, max=1e6)
-        disp = torch.exp(self.fc_disp(u)).clamp(min=1e-6, max=1e6)
+        
+        eps = 1e-6
+        mean = (F.softplus(self.fc_mean(u)) + eps).clamp(max=1e6)
+        disp = (F.softplus(self.fc_disp(u)) + eps).clamp(max=1e4)
 
         y = self.decode_latent(u)
 
@@ -285,10 +295,14 @@ class scSMDModel(BaseModel):
             tot = 0.0
             n = 0
             for batch in train_loader:
-                x, _ = self._prepare_batch(batch, device)
-                out = self.forward(x)
-                loss = self.compute_loss(x, out)["total_loss"]
-
+                x, batch_kwargs = self._prepare_batch(batch, device)
+                out = self.forward(x, **batch_kwargs)
+                loss = self.compute_loss(x, out, **batch_kwargs)["total_loss"]
+                if not torch.isfinite(loss):
+                    if verbose >= 1:
+                        print("Non-finite loss encountered; skipping batch.")
+                    opt_ae.zero_grad(set_to_none=True)
+                    continue
                 opt_ae.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.autoencoder.parameters(), max_norm=1.0)
