@@ -13,7 +13,7 @@ A deep learning framework for single-cell RNA-seq analysis combining:
 # ============================================================================
 # agent.py - Main User Interface
 # ============================================================================
-
+from .mixin import VectorFieldMixin
 from .environment import Env
 from anndata import AnnData
 from typing import Optional
@@ -21,7 +21,7 @@ import torch
 import tqdm
 
 
-class Liora(Env):
+class Liora(Env, VectorFieldMixin):
     """
     Liora: Lorentz Information ODE Regularized Variational AutoEncoder
     
@@ -267,6 +267,11 @@ class Liora(Env):
             attn_num_layers=attn_num_layers,
             attn_seq_len=attn_seq_len
         )
+        
+        # Resource tracking
+        self.train_time = 0.0
+        self.peak_memory_gb = 0.0
+        self.actual_epochs = 0
     
     def fit(
         self, 
@@ -314,6 +319,11 @@ class Liora(Env):
         - Best: Best validation loss seen
         - Pat: Patience counter
         """
+        use_cuda = torch.cuda.is_available()
+        if use_cuda:
+            torch.cuda.reset_peak_memory_stats()
+        start_time = time.time()
+
         with tqdm.tqdm(total=epochs, desc="Training", ncols=200) as pbar:
             for epoch in range(epochs):
                 # Train for one complete epoch
@@ -345,6 +355,7 @@ class Liora(Env):
                         })
                         
                         if should_stop:
+                            self.actual_epochs = epoch + 1
                             print(f"\n\nEarly stopping at epoch {epoch + 1}")
                             print(f"Best validation loss: {self.best_val_loss:.4f}")
                             self.load_best_model()
@@ -363,7 +374,12 @@ class Liora(Env):
                         })
                 
                 pbar.update(1)
-        
+            else:
+                self.actual_epochs = epochs
+                
+        # Record resource usage
+        self.train_time = time.time() - start_time
+        self.peak_memory_gb = torch.cuda.max_memory_allocated() / 1e9 if use_cuda else 0.0
         return self
     
     def get_latent(self):
@@ -415,3 +431,18 @@ class Liora(Env):
             outputs = self.nn(x)
             le = outputs[4]  # Information bottleneck encoding
         return le.cpu().numpy()
+
+    def get_resource_metrics(self):
+        """
+        Get training resource usage metrics.
+        
+        Returns
+        -------
+        metrics : dict
+            Dictionary with 'train_time', 'peak_memory_gb', 'actual_epochs'
+        """
+        return {
+            'train_time': self.train_time,
+            'peak_memory_gb': self.peak_memory_gb,
+            'actual_epochs': self.actual_epochs
+        }
