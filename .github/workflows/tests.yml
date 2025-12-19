@@ -10,36 +10,63 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-13]
         python-version: ['3.9', '3.10', '3.11']
-    
+
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-      timeout-minutes: 10
-      continue-on-error: false
-      retry:
-        max-attempts: 3
-        backoff-ms: 2000
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .[test]
-    
-    - name: Run tests
-      run: |
-        pytest -v --cov=liora --cov-report=xml
-    
-    - name: Upload coverage
-      uses: codecov/codecov-action@v3
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
-      with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+      - uses: actions/checkout@v4
+
+      # Retry setup-python up to 3 times (because network/API timeouts happen on macOS)
+      - name: Set up Python (attempt 1) ${{ matrix.python-version }}
+        id: setup_python_1
+        uses: actions/setup-python@v5
+        timeout-minutes: 10
+        continue-on-error: true
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            setup.py
+
+      - name: Set up Python (attempt 2) ${{ matrix.python-version }}
+        id: setup_python_2
+        if: steps.setup_python_1.outcome == 'failure'
+        uses: actions/setup-python@v5
+        timeout-minutes: 10
+        continue-on-error: true
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            setup.py
+
+      - name: Set up Python (attempt 3) ${{ matrix.python-version }}
+        if: steps.setup_python_2.outcome == 'failure'
+        uses: actions/setup-python@v5
+        timeout-minutes: 10
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            setup.py
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[test]
+
+      - name: Run tests
+        run: |
+          pytest -v --cov=liora --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false

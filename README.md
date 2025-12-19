@@ -6,16 +6,22 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/liora)](https://pypi.org/project/liora/)
 
-Liora is a powerful deep learning framework for single-cell RNA-seq analysis, combining variational autoencoders with geometric manifold learning and neural ODEs for trajectory inference.
+Liora is a PyTorch-based variational autoencoder (VAE) for single-cell RNA-seq (AnnData) that learns low-dimensional embeddings from raw count matrices using count-likelihood objectives (NB/ZINB/Poisson/ZIP). It optionally adds (1) Lorentz/hyperbolic (or Euclidean) manifold regularization and (2) latent Neural ODE dynamics (via `torchdiffeq`) for continuous trajectory-style modeling.
 
 ## Key Features
 
 - **Advanced VAE Architecture**: Dimensionality reduction with count-based likelihoods (NB, ZINB, Poisson, ZIP)
 - **Geometric Manifold Learning**: Lorentz (hyperbolic) or Euclidean regularization for hierarchical structure
 - **Information Bottleneck**: Hierarchical representation with controllable compression
-- **Neural ODE Trajectory Inference**: Continuous temporal dynamics with multiple solver options
+- **Neural ODE (optional)**: latent dynamics solved with `torchdiffeq` (CPU by design). Supports ODE function types `legacy`, `time_mlp` (time-conditioned), and `gru`, and solver methods like `rk4` and `dopri5`.
 - **Flexible Encoders**: Standard MLP or Transformer-based with self-attention
 - **Advanced ODE Functions**: Time-conditioned MLP or GRU-based recurrent dynamics
+
+## Data Requirements
+
+- `adata.layers[layer]` must contain **raw, non-negative integer-like counts** (UMI counts).  
+  Liora checks this heuristically and raises a `ValueError` if the layer looks normalized/log-transformed.
+- Liora applies its own `log1p` + clipping / adaptive normalization internally for training.
 
 ## Installation
 
@@ -92,6 +98,8 @@ bottleneck = model.get_bottleneck()   # Information bottleneck
 pseudotime = model.get_time()         # Predicted pseudotime
 transitions = model.get_transition()  # Transition matrix
 ```
+
+> Note: `get_time()` and `get_transition()` require `use_ode=True`.
 
 ## Configuration Guide
 
