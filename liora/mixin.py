@@ -1,6 +1,7 @@
 # ============================================================================
 # mixin.py - Loss Functions and Metrics
 # ============================================================================
+from __future__ import annotations
 
 import torch
 import torch.nn as nn
@@ -14,7 +15,10 @@ from sklearn.metrics import (
     calinski_harabasz_score,
     davies_bouldin_score
 )
-from typing import Optional
+
+from scipy.sparse import issparse, csr_matrix, coo_matrix
+from typing import Optional, Tuple
+from anndata import AnnData
 
 class scviMixin:
     """Count-based likelihood functions for single-cell RNA-seq data."""
