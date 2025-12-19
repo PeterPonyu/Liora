@@ -15,9 +15,10 @@ from sklearn.metrics import (
     calinski_harabasz_score,
     davies_bouldin_score
 )
-
+from sklearn.neighbors import NearestNeighbors
 from scipy.sparse import issparse, csr_matrix, coo_matrix
 from typing import Optional, Tuple
+from scipy.stats import norm
 from anndata import AnnData
 
 class scviMixin:
@@ -480,7 +481,7 @@ class VectorFieldMixin:
             )
         
         # Step 1: Compute velocity gradients
-        grads = self.take_grad(self.X)
+        grads = self.take_grad(self.X_norm)
         adata.obsm[vf_key] = grads
         
         # Step 2: Compute transition similarity matrix
@@ -694,14 +695,15 @@ class VectorFieldMixin:
                 T.setdiag(self_t)
 
         # Apply exponential transform
-        sign_T = T.sign() if hasattr(T, 'sign') else np.sign(T)
-        if hasattr(sign_T, 'multiply'):
-            T = sign_T.multiply(np.expm1(np.abs(T.data) * scale))
+        if issparse(T):
+            # For sparse matrices, transform only the non-zero data in-place
+            T.data = np.sign(T.data) * np.expm1(np.abs(T.data) * scale)
         else:
-            T = sign_T * np.expm1(np.abs(T * scale))
+            # For dense matrices
+            T = np.sign(T) * np.expm1(np.abs(T) * scale)
         
         # Normalize rows
-        if hasattr(T, 'multiply'):
+        if issparse(T):
             denom = np.array(np.abs(T).sum(1)).flatten()
             denom = np.maximum(denom, 1e-12)
             T = T.multiply(csr_matrix(1.0 / denom[:, np.newaxis]))
@@ -720,12 +722,17 @@ class VectorFieldMixin:
         V = np.zeros(E.shape)
 
         for i in range(adata.n_obs):
-            idx = T[i].indices
-            dE = E[idx] - E[i, None]
-            dE /= l2_norm(dE)[:, None]
-            dE[np.isnan(dE)] = 0
-            prob = T[i].data
-            V[i] = prob.dot(dE) - prob.mean() * dE.sum(0)
+            if issparse(T):
+                neighbors = T[i].indices
+                weights = T[i].data
+            else:
+                nonzero = T[i] != 0
+                neighbors = np.where(nonzero)[0]
+                weights = T[i, nonzero]
+            
+            if len(neighbors) > 0:
+                dE = E[neighbors] - E[i]
+                V[i] = np.sum(weights[:, None] * dE, axis=0)
 
         V /= 3 * quiver_autoscale(E, V)
         

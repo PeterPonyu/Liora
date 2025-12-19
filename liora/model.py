@@ -213,7 +213,7 @@ class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
         
         state = torch.tensor(state, dtype=torch.float32).to(self.device)
         q_z, q_m, q_s, n, t = self.nn.encoder(state)
-        grads = self.nn.ode_solver(t, q_z)
+        grads = self.nn.ode_solver(t.cpu(), q_z.cpu())
         return grads.cpu().numpy()
     
     @torch.no_grad()

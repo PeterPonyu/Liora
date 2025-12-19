@@ -19,7 +19,7 @@ from anndata import AnnData
 from typing import Optional
 import torch
 import tqdm
-
+import time
 
 class Liora(Env, VectorFieldMixin):
     """
