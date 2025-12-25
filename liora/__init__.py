@@ -1,8 +1,7 @@
-# ============================================================================
-# __init__.py - Package Interface
-# ============================================================================
+from .agent import LAIOR
 
-from .agent import Liora
+# Backward compatibility alias
+Liora = LAIOR
 
-__all__ = ['Liora']
-__version__ = '0.4.3'
+__all__ = ['LAIOR', 'Liora']
+__version__ = '0.5.0'

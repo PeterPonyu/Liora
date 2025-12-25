@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-12-25
+
+### Changed
+- Renamed model from "Liora" to "LAIOR" (Lorentz Attentive Interpretable ODE Regularized VAE) to align with published paper
+- Updated full name from "Lorentz Interpretable ODE-Regularized Attention-based VAE" to match paper specification
+- Maintained backward compatibility: `Liora` class name remains as alias to `LAIOR`
+- Updated all documentation, docstrings, and comments to reflect LAIOR naming
+- Enhanced description to emphasize cross-modality support (scRNA-seq and scATAC-seq)
+
 ## [0.4.2] - 2025-11-21
 
 ### Changed

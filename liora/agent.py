@@ -1,13 +1,16 @@
 """
-Liora: Lorentz Information ODE Regularized Variational AutoEncoder
-==================================================================
+LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE
+===========================================================
 
-A deep learning framework for single-cell RNA-seq analysis combining:
+A unified deep learning framework for single-cell omics analysis combining:
 - Variational Autoencoder (VAE) for dimensionality reduction
-- Lorentz/Euclidean manifold regularization for geometric structure
-- Information bottleneck for hierarchical representation learning
-- Neural ODE for trajectory inference (optional)
+- Lorentz geometric regularization for hierarchical structure
+- Dual-path information bottleneck for coordinated biological programs
+- Neural ODE regularization for trajectory stability
+- Transformer-based attention mechanisms for long-range dependencies
 - Multiple count-based likelihood functions (NB, ZINB, Poisson, ZIP)
+
+Supports both scRNA-seq and scATAC-seq modalities without architectural modification.
 """
 
 # ============================================================================
@@ -21,13 +24,14 @@ import torch
 import tqdm
 import time
 
-class Liora(Env, VectorFieldMixin):
+class LAIOR(Env, VectorFieldMixin):
     """
-    Liora: Lorentz Information ODE Regularized Variational AutoEncoder
+    LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE
     
-    A unified framework for single-cell RNA-seq analysis that learns low-dimensional
-    representations while preserving geometric and topological structure through
-    manifold regularization and optional temporal dynamics via Neural ODEs.
+    A unified framework for single-cell omics analysis (scRNA-seq and scATAC-seq) that 
+    learns low-dimensional representations while preserving both local cell-state structure 
+    and global hierarchical organization through Lorentz geometric regularization, 
+    information bottleneck architecture, and neural ODE-based trajectory stabilization.
     
     Architecture Overview
     ---------------------

@@ -13,7 +13,7 @@ from .module import VAE
 from .utils import lorentz_distance
 
 
-class LioraModel(scviMixin, dipMixin, betatcMixin, infoMixin):
+class LAIORModel(scviMixin, dipMixin, betatcMixin, infoMixin):
     """
     Core Liora model implementing loss computation and optimization.
     

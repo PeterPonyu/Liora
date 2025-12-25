@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "liora"
-version = "0.4.3"
-description = "Liora: Lorentz Interpretable ODE-Regularized Attention-based VAE"
+version = "0.5.0"
+description = "LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE for single-cell omics analysis"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {file = "LICENSE"}

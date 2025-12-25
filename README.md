@@ -1,12 +1,12 @@
-# Liora: Lorentz Interpretable ODE-Regularized Attention-based VAE
+# LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE
 
-**A deep learning framework for single-cell RNA-seq analysis combining geometric manifold learning, latent dynamics, and comprehensive interpretability.**
+**A deep learning framework for single-cell omics analysis combining geometric manifold learning, latent dynamics, and comprehensive interpretability.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/liora)](https://pypi.org/project/liora/)
 
-Liora is a PyTorch-based variational autoencoder (VAE) for single-cell RNA-seq (AnnData) that learns low-dimensional embeddings from **raw count matrices** using count-likelihood objectives (NB/ZINB/Poisson/ZIP). It integrates (1) Lorentz/hyperbolic manifold regularization for hierarchical structure, (2) latent Neural ODE dynamics for continuous trajectory inference, and (3) an extensive interpretability suite for gene-to-latent attribution.
+LAIOR (Lorentz Attentive Interpretable ODE Regularized VAE) is a PyTorch-based unified framework for single-cell RNA-seq and ATAC-seq analysis (AnnData format) that learns low-dimensional embeddings from **raw count matrices** using count-likelihood objectives (NB/ZINB/Poisson/ZIP). It integrates (1) Lorentz geometric regularization for hierarchical structure, (2) dual-path information bottleneck architecture for coordinated biological programs, (3) Neural ODE regularization for temporal trajectory stability, and (4) transformer-based attention mechanisms for capturing long-range dependencies.
 
 ## Key Features
 
@@ -20,8 +20,8 @@ Liora is a PyTorch-based variational autoencoder (VAE) for single-cell RNA-seq (
 ## Data Requirements
 
 - `adata.layers[layer]` must contain **raw, non-negative integer-like counts** (UMI counts).  
-  Liora checks this heuristically and raises a `ValueError` if the layer looks normalized/log-transformed.
-- Liora applies its own `log1p` + clipping / adaptive normalization internally for training.
+  LAIOR checks this heuristically and raises a `ValueError` if the layer looks normalized/log-transformed.
+- LAIOR applies its own `log1p` + clipping / adaptive normalization internally for training.
 
 ## Installation
 
@@ -43,13 +43,13 @@ pip install -e .
 
 ```python
 import scanpy as sc
-from liora import Liora
+from liora import LAIOR
 
 # Load your data
 adata = sc.read_h5ad('data.h5ad')
 
 # Train with default settings
-model = Liora(
+model = LAIOR(
     adata,
     layer='counts',
     hidden_dim=128,
@@ -66,7 +66,7 @@ latent = model.get_latent()
 
 ```python
 # Transformer encoder + Neural ODE trajectory inference
-model = Liora(
+model = LAIOR(
     adata,
     layer='counts',
     hidden_dim=128,
@@ -177,9 +177,9 @@ transitions = model.get_transition()  # Transition probabilities (ODE mode)
 If you use Liora in your research, please cite:
 
 ```bibtex
-@software{liora2025,
-  title = {Liora: Lorentz Information ODE-Regularized Variational Autoencoder},
-  author = {Zeyu Fu},
+@software{laior2025,
+  title = {LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE},
+  author = {Zeyu Fu and Jiawei Fu and Chunlin Chen and Keyang Zhang and Junping Wang and Song Wang},
   year = {2025},
   url = {https://github.com/PeterPonyu/Liora}
 }

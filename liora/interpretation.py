@@ -1,5 +1,5 @@
 """
-Interpretability analysis for Liora VAE with attention and ODE components.
+Interpretability analysis for LAIOR VAE with attention and ODE components.
 
 Provides comprehensive attribution analysis:
 1. Attention pathway: Genes → Tokens → Latents → Outputs
@@ -16,9 +16,9 @@ from scipy.stats import spearmanr
 import warnings
 
 
-class LioraInterpretability:
+class LAIORInterpretability:
     """
-    Complete interpretability analysis for Liora models.
+    Complete interpretability analysis for LAIOR models.
     
     Handles both MLP and attention-based encoders, with special
     support for trajectory analysis.
@@ -32,8 +32,8 @@ class LioraInterpretability:
     
     Parameters
     ----------
-    model : LioraModel
-        Trained Liora model instance
+    model : LAIORModel
+        Trained LAIOR model instance
     gene_names : list, optional
         Names of input genes/features
     latent_names : list, optional
@@ -42,7 +42,7 @@ class LioraInterpretability:
     
     def __init__(
         self,
-        model,  # LioraModel instance
+        model,  # LAIORModel instance
         gene_names: Optional[List[str]] = None,
         latent_names: Optional[List[str]] = None
     ):
