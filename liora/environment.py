@@ -2,7 +2,7 @@
 # environment.py - Data Loading and Preprocessing
 # ============================================================================
 
-from .model import LioraModel
+from .model import LAIORModel
 from .mixin import envMixin
 import numpy as np
 from scipy.sparse import issparse
@@ -83,9 +83,9 @@ def compute_dataset_stats(X):
     }
 
 
-class Env(LioraModel, envMixin):
+class Env(LAIORModel, envMixin):
     """
-    Environment for Liora model handling data preprocessing and training loops.
+    Environment for LAIOR model handling data preprocessing and training loops.
     
     Responsibilities:
     - Load and validate raw count data from AnnData
