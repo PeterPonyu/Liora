@@ -1,9 +1,9 @@
 import torch
 import pytest
 
-from liora.module import VAE
-from liora.ode_functions import create_ode_func
-from liora.mixin import NODEMixin
+from laior.module import VAE
+from laior.ode_functions import create_ode_func
+from laior.mixin import NODEMixin
 
 
 class DummyNODE(NODEMixin):

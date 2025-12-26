@@ -1,6 +1,6 @@
 
 """
-ODE function architectures for latent dynamics in Liora.
+ODE function architectures for latent dynamics in LAIOR.
 
 Available implementations:
 - LatentODEfunc: Original time-invariant MLP (legacy, not recommended)

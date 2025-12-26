@@ -142,18 +142,18 @@ class LAIOR(Env, VectorFieldMixin):
     Examples
     --------
     >>> import scanpy as sc
-    >>> from liora import Liora
+    >>> from laior import LAIOR
     >>> 
     >>> # Load data
     >>> adata = sc.read_h5ad('data.h5ad')
     >>> 
     >>> # Basic usage with default parameters
-    >>> model = Liora(adata, layer='counts')
+    >>> model = LAIOR(adata, layer='counts')
     >>> model.fit(epochs=100)
     >>> latent = model.get_latent()
     >>> 
     >>> # Advanced: with manifold regularization and ODE
-    >>> model = Liora(
+    >>> model = LAIOR(
     ...     adata, 
     ...     lorentz=5.0,      # Enable Lorentz regularization
     ...     use_ode=True,     # Enable trajectory inference
@@ -285,7 +285,7 @@ class LAIOR(Env, VectorFieldMixin):
         early_stop: bool = True,
     ):
         """
-        Train the Liora model with mini-batch gradient descent.
+        Train the LAIOR model with mini-batch gradient descent.
         
         Training uses:
         - Adam optimizer with configurable learning rate
@@ -306,7 +306,7 @@ class LAIOR(Env, VectorFieldMixin):
         
         Returns
         -------
-        self : Liora
+        self : LAIOR
             Returns self for method chaining
         
         Notes

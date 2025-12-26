@@ -477,7 +477,7 @@ class VectorFieldMixin:
         if not self.use_ode:
             raise ValueError(
                 "Vector field analysis requires use_ode=True. "
-                "Reinitialize with: Liora(adata, use_ode=True)"
+                "Reinitialize with: LAIOR(adata, use_ode=True)"
             )
         
         # Step 1: Compute velocity gradients

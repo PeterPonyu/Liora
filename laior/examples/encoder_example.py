@@ -3,12 +3,12 @@ Small example to demonstrate the attention-based encoder.
 Run from repository root with:
 
 cd /home/zeyufu/LAB/Liora
-python -m liora.examples.encoder_example
+python -m laior.examples.encoder_example
 
 """
 
 import torch
-from liora import module
+from laior import module
 
 def run_example():
     batch = 8

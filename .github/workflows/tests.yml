@@ -38,7 +38,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest -v --cov=liora --cov-report=xml
+          pytest -v --cov=laior --cov-report=xml
 
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'

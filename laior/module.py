@@ -1,5 +1,5 @@
 """
-Neural network modules for Liora.
+Neural network modules for LAIOR.
 
 Core components:
 - Encoder: Maps high-dimensional input to latent distribution
@@ -243,7 +243,7 @@ class Decoder(nn.Module):
 
 class VAE(nn.Module, NODEMixin):
     """
-    Liora: Lorentz Information ODE Regularized Variational AutoEncoder.
+    LAIOR: Lorentz Information ODE Regularized Variational AutoEncoder.
     
     Combines VAE with geometric regularization on Lorentz/Euclidean manifolds
     and optional Neural ODE dynamics for continuous trajectory learning.

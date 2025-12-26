@@ -15,7 +15,7 @@ from .utils import lorentz_distance
 
 class LAIORModel(scviMixin, dipMixin, betatcMixin, infoMixin):
     """
-    Core Liora model implementing loss computation and optimization.
+    Core LAIOR model implementing loss computation and optimization.
     
     Combines multiple regularization objectives:
     - Reconstruction loss (NB/ZINB/Poisson/ZIP)

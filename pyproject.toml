@@ -3,8 +3,8 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "liora"
-version = "0.5.0"
+name = "laior"
+version = "0.6.0"
 description = "LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE for single-cell omics analysis"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -72,15 +72,15 @@ Issues = "https://github.com/PeterPonyu/Liora/issues"
 Documentation = "https://github.com/PeterPonyu/Liora#readme"
 
 [tool.setuptools]
-packages = ["liora"]
+packages = ["laior"]
 
 [tool.setuptools.package-data]
-liora = ["py.typed"]
+laior = ["py.typed"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
 addopts = "-ra -q"
-testpaths = ["liora/tests"]
+testpaths = ["laior/tests"]
 pythonpath = ["."]
 
 [tool.black]
