@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI](https://img.shields.io/pypi/v/liora)](https://pypi.org/project/liora/)
+[![PyPI](https://img.shields.io/pypi/v/laior)](https://pypi.org/project/laior/)
 
 LAIOR (Lorentz Attentive Interpretable ODE Regularized VAE) is a PyTorch-based unified framework for single-cell RNA-seq and ATAC-seq analysis (AnnData format) that learns low-dimensional embeddings from **raw count matrices** using count-likelihood objectives (NB/ZINB/Poisson/ZIP). It integrates (1) Lorentz geometric regularization for hierarchical structure, (2) dual-path information bottleneck architecture for coordinated biological programs, (3) Neural ODE regularization for temporal trajectory stability, and (4) transformer-based attention mechanisms for capturing long-range dependencies.
 
@@ -26,7 +26,7 @@ LAIOR (Lorentz Attentive Interpretable ODE Regularized VAE) is a PyTorch-based u
 ## Installation
 
 ```bash
-pip install liora
+pip install laior
 ```
 
 Or install from source:
@@ -174,7 +174,7 @@ transitions = model.get_transition()  # Transition probabilities (ODE mode)
 
 ## Citation
 
-If you use Liora in your research, please cite:
+If you use LAIOR in your research, please cite:
 
 ```bibtex
 @software{laior2025,
@@ -184,6 +184,10 @@ If you use Liora in your research, please cite:
   url = {https://github.com/PeterPonyu/Liora}
 }
 ```
+
+## Related Packages
+
+- **HSDE**: A complementary package implementing Hyperbolic Stochastic Differential Equations for advanced manifold learning. Located in the `HSDE/` folder of this repository.
 
 ## License
 
