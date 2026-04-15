@@ -1,3 +1,9 @@
+<div align="center">
+  <a href="https://peterponyu.github.io/">
+    <img src="https://peterponyu.github.io/assets/badges/Liora.svg" width="64" alt="ZF Lab · Liora">
+  </a>
+</div>
+
 # LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE
 
 **A deep learning framework for single-cell omics analysis combining geometric manifold learning, latent dynamics, and comprehensive interpretability.**
