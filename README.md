@@ -182,13 +182,11 @@ transitions = model.get_transition()  # Transition probabilities (ODE mode)
 If you use LAIOR in your research, please cite:
 
 ```bibtex
-@article{Fu2026LAIOR,
-  author  = {Fu, Zeyu and Fu, Jiawei and Zhang, Keyang and Ran, Tianfei and Chen, Chunlin},
-  title   = {{LAIOR}: A Hyperbolic Neural-ODE Variational Framework for Interpretable Single-Cell Manifold Learning and Trajectory Inference},
-  journal = {Frontiers in Genetics},
-  year    = {2026},
-  note    = {Submitted},
-  url     = {https://github.com/PeterPonyu/Liora}
+@software{Fu2026LAIOR,
+  author = {Fu, Zeyu and Fu, Jiawei and Zhang, Keyang and Ran, Tianfei and Chen, Chunlin},
+  title  = {{LAIOR}: A Hyperbolic Neural-ODE Variational Framework for Interpretable Single-Cell Manifold Learning and Trajectory Inference},
+  year   = {2026},
+  url    = {https://github.com/PeterPonyu/Liora}
 }
 ```
 
