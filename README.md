@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/laior)](https://pypi.org/project/laior/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19049029.svg)](https://doi.org/10.5281/zenodo.19049029)
 
 LAIOR (Lorentz Attentive Interpretable ODE Regularized VAE) is a PyTorch-based framework for single-cell RNA-seq and ATAC-seq analysis (AnnData format) that learns low-dimensional embeddings from **raw count matrices** using count-likelihood objectives (NB/ZINB/Poisson/ZIP). It integrates (1) Lorentz geometric regularization for hierarchical structure, (2) dual-path information bottleneck architecture for coordinated biological programs, (3) Neural ODE regularization for temporal trajectory stability, and (4) transformer-based attention mechanisms for capturing long-range dependencies.
 
@@ -181,12 +182,13 @@ transitions = model.get_transition()  # Transition probabilities (ODE mode)
 If you use LAIOR in your research, please cite:
 
 ```bibtex
-@article{fu2026laior,
-  title = {LAIOR: A Hyperbolic Neural-ODE Variational Framework for Interpretable Single-Cell Manifold Learning and Trajectory Inference},
-  author = {Zeyu Fu and Jiawei Fu and Keyang Zhang and Tianfei Ran and Chunlin Chen},
+@article{Fu2026LAIOR,
+  author  = {Fu, Zeyu and Fu, Jiawei and Zhang, Keyang and Ran, Tianfei and Chen, Chunlin},
+  title   = {{LAIOR}: A Hyperbolic Neural-ODE Variational Framework for Interpretable Single-Cell Manifold Learning and Trajectory Inference},
   journal = {Frontiers in Genetics},
-  year = {2026},
-  url = {https://github.com/PeterPonyu/Liora}
+  year    = {2026},
+  note    = {Submitted},
+  url     = {https://github.com/PeterPonyu/Liora}
 }
 ```
 
