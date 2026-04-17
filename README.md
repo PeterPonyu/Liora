@@ -1,30 +1,23 @@
-<div align="center">
-  <a href="https://peterponyu.github.io/">
-    <img src="https://peterponyu.github.io/assets/badges/Liora.svg" width="64" alt="ZF Lab · Liora">
-  </a>
-</div>
-
 # LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE
 
-**A deep learning framework for single-cell omics analysis combining geometric manifold learning, latent dynamics, and comprehensive interpretability.**
+PyTorch package for single-cell omics analysis with geometric regularization, optional latent dynamics, and interpretation utilities.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/laior)](https://pypi.org/project/laior/)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19049029.svg)](https://doi.org/10.5281/zenodo.19049029)
 
-LAIOR (Lorentz Attentive Interpretable ODE Regularized VAE) is a PyTorch-based framework for single-cell RNA-seq and ATAC-seq analysis (AnnData format) that learns low-dimensional embeddings from **raw count matrices** using count-likelihood objectives (NB/ZINB/Poisson/ZIP). It integrates (1) Lorentz geometric regularization for hierarchical structure, (2) dual-path information bottleneck architecture for coordinated biological programs, (3) Neural ODE regularization for temporal trajectory stability, and (4) transformer-based attention mechanisms for capturing long-range dependencies.
+LAIOR (Lorentz Attentive Interpretable ODE Regularized VAE) is a PyTorch-based package for single-cell RNA-seq and ATAC-seq analysis on AnnData objects. It learns low-dimensional embeddings from **raw count matrices** using count-likelihood objectives (NB/ZINB/Poisson/ZIP) and supports Lorentz regularization, an information bottleneck, optional Neural ODE dynamics, and transformer-based encoders.
 
 LAIOR is applicable to both scRNA-seq and scATAC-seq data without architectural modification, but is trained independently on each dataset — it does not perform joint multi-omics integration or cross-modal prediction. Pseudotime prediction is fully self-supervised: no externally computed pseudotime labels are required.
 
 ## Key Features
 
-- **Advanced VAE Architecture**: Dimensionality reduction with count-based likelihoods (NB, ZINB, Poisson, ZIP)
-- **Geometric Manifold Learning**: Lorentz (hyperbolic) or Euclidean regularization for hierarchical structure
-- **Neural ODE Trajectories**: Latent dynamics solved with `torchdiffeq` (CPU by design). Supports ODE function types `legacy`, `time_mlp` (time-conditioned), and `gru`.
-- **Comprehensive Interpretability**: Attribution analysis for Genes → Latents (discriminative) and Latents → Genes (reconstructive) pathways.
-- **Flexible Encoders**: Standard MLP or Transformer-based with self-attention for capturing complex feature dependencies.
-- **Information Bottleneck**: Hierarchical representation with controllable compression via the `i_dim` parameter.
+- **Count-based VAE objectives**: Dimensionality reduction with NB, ZINB, Poisson, and ZIP likelihoods
+- **Geometric regularization**: Lorentz (hyperbolic) or Euclidean structure priors
+- **Optional Neural ODE trajectories**: Latent dynamics via `torchdiffeq` with `legacy`, `time_mlp`, and `gru` ODE functions
+- **Interpretation utilities**: Attribution analysis for Genes → Latents and Latents → Genes pathways
+- **Flexible encoders**: MLP and transformer-based encoders
+- **Information bottleneck**: Adjustable compression through the `i_dim` parameter
 
 ## Data Requirements
 
@@ -145,18 +138,18 @@ transitions = model.get_transition()  # Transition matrix
 
 ### Loss Configuration
 
-The constructor defaults below are intentionally set to zero for all regularization terms except reconstruction and KL. This supports a bottom-up ablation workflow: start from a plain VAE and enable each regularizer explicitly. **The defaults are not the settings used in the paper.** The full LAIOR configuration reported in the manuscript uses `lorentz=5.0`, `irecon=1.0`, and `use_ode=True` (with ODE consistency weight 1.0).
+The constructor defaults below set all optional regularization terms to zero except reconstruction and KL. This lets you start from a plain VAE baseline and enable each regularizer explicitly.
 
-| Parameter | Type | Default | Paper setting | Description |
-|-----------|------|---------|---------------|-------------|
-| `recon` | float | 1.0 | 1.0 | Reconstruction loss weight |
-| `irecon` | float | 0.0 | **1.0** | Bottleneck reconstruction weight |
-| `lorentz` | float | 0.0 | **5.0** | Manifold regularization weight |
-| `beta` | float | 1.0 | 1.0 | KL divergence weight (β-VAE) |
-| `dip` | float | 0.0 | 0.0 | DIP-VAE loss weight |
-| `tc` | float | 0.0 | 0.0 | Total Correlation loss weight |
-| `info` | float | 0.0 | 0.0 | MMD loss weight |
-| `loss_type` | str | `'nb'` | `'nb'` | `'nb'`, `'zinb'`, `'poisson'`, or `'zip'` |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `recon` | float | 1.0 | Reconstruction loss weight |
+| `irecon` | float | 0.0 | Bottleneck reconstruction weight |
+| `lorentz` | float | 0.0 | Manifold regularization weight |
+| `beta` | float | 1.0 | KL divergence weight (β-VAE) |
+| `dip` | float | 0.0 | DIP-VAE loss weight |
+| `tc` | float | 0.0 | Total Correlation loss weight |
+| `info` | float | 0.0 | MMD loss weight |
+| `loss_type` | str | `'nb'` | `'nb'`, `'zinb'`, `'poisson'`, or `'zip'` |
 
 ### Training Parameters
 
@@ -181,19 +174,6 @@ latent = model.get_latent()           # Latent representations
 bottleneck = model.get_bottleneck()   # Information bottleneck embeddings
 pseudotime = model.get_time()         # Pseudotime (ODE mode)
 transitions = model.get_transition()  # Transition probabilities (ODE mode)
-```
-
-## Citation
-
-If you use LAIOR in your research, please cite:
-
-```bibtex
-@software{Fu2026LAIOR,
-  author = {Fu, Zeyu and Fu, Jiawei and Zhang, Keyang and Ran, Tianfei and Chen, Chunlin},
-  title  = {{LAIOR}: A Hyperbolic Neural-ODE Variational Framework for Interpretable Single-Cell Manifold Learning and Trajectory Inference},
-  year   = {2026},
-  url    = {https://github.com/PeterPonyu/Liora}
-}
 ```
 
 ## Related Packages
