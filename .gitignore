@@ -92,3 +92,25 @@ dmypy.json
 *.pt
 *.pth
 *.ckpt
+
+# --- security-audit: secrets, agent state, clinical/bulk data ---
+secrets.env
+credentials.json
+*.pem
+*.key
+id_rsa
+.npmrc
+.netrc
+.cursor/
+.claude/
+.codex/
+.omc/
+.omx/
+.agent/
+.aider*
+.continue/
+.windsurf/
+spermdata/
+harmonized_donor_samples.csv
+donor_exposure*.csv
+/submission/
