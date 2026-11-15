@@ -180,6 +180,26 @@ transitions = model.get_transition()  # Transition probabilities (ODE mode)
 
 - **HSDE**: A complementary package implementing Hyperbolic Stochastic Differential Equations for advanced manifold learning. Located in the `HSDE/` folder of this repository.
 
+## Citation
+
+If you use LAIOR, please cite the article:
+
+> Fu Z, Fu J, Zhang K, Ran T, Chen C. LAIOR: a hyperbolic neural ODE variational framework for interpretable single-cell manifold learning and trajectory inference. *Frontiers in Genetics*. 2026;17:1838613. https://doi.org/10.3389/fgene.2026.1838613
+
+```bibtex
+@article{fu2026laior,
+  author  = {Fu, Zeyu and Fu, Jiawei and Zhang, Keyang and Ran, Tianfei and Chen, Chunlin},
+  title   = {LAIOR: a hyperbolic neural ODE variational framework for interpretable single-cell manifold learning and trajectory inference},
+  journal = {Frontiers in Genetics},
+  volume  = {17},
+  pages   = {1838613},
+  year    = {2026},
+  doi     = {10.3389/fgene.2026.1838613}
+}
+```
+
+GitHub's "Cite this repository" button reads the same record from `CITATION.cff`.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
