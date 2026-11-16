@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.1] - 2026-11-15
 
+### Fixed
+- `get_vf(..., self_transition=True)` failed with SciPy 1.14 and later, which removed the `.A` shortcut on sparse results; the row maxima of the transition matrix are now converted explicitly
+- `l2_norm` also accepts SciPy sparse arrays
+
 ### Documentation
 - README cites the published LAIOR article (Frontiers in Genetics 17, 1838613, 2026)
 - Added CITATION.cff so GitHub and Zenodo show the same citation
-- No changes to the laior package code
 
 ## [0.6.0] - 2025-12-26
 

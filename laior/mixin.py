@@ -354,7 +354,7 @@ def l2_norm(x: np.ndarray, axis: int = -1) -> np.ndarray:
         L2 norms
     """
     if issparse(x):
-        return np.sqrt(x.multiply(x).sum(axis=axis).A1)
+        return np.sqrt(np.asarray(x.multiply(x).sum(axis=axis)).ravel())
     else:
         return np.sqrt(np.sum(x * x, axis=axis))
 
@@ -688,7 +688,9 @@ class VectorFieldMixin:
 
         # Handle self-transitions
         if self_transition:
-            max_t = T.max(1).A.flatten() if hasattr(T.max(1), 'A') else np.array(T.max(1)).flatten()
+            row_max = T.max(1)
+            # Sparse results have no .A since SciPy 1.14; densify explicitly.
+            max_t = np.asarray(row_max.todense() if issparse(row_max) else row_max).ravel()
             ub = np.percentile(max_t, 98)
             self_t = np.clip(ub - max_t, 0, 1)
             if hasattr(T, 'setdiag'):
