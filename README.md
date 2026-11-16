@@ -1,5 +1,7 @@
 # Liora: Lorentz Interpretable ODE-Regularized Attention-based VAE
 
+> **This project has moved to [`laior`](https://pypi.org/project/laior/).** Liora is now developed and released as LAIOR: install it with `pip install laior` and import it as `laior` (source: https://github.com/PeterPonyu/Liora). The `liora` package will not be updated again. This final release, 0.4.4, only adds this notice; its code is identical to 0.4.3.
+
 **A deep learning framework for single-cell RNA-seq analysis combining geometric manifold learning, latent dynamics, and comprehensive interpretability.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

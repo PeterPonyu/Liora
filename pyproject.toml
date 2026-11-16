@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "liora"
-version = "0.4.3"
+version = "0.4.4"
 description = "Liora: Lorentz Interpretable ODE-Regularized Attention-based VAE"
 readme = "README.md"
 requires-python = ">=3.9"
