@@ -144,7 +144,7 @@ class HSDE(Env, VectorFieldMixin):
     Examples
     --------
     >>> import scanpy as sc
-    >>> from liora import HSDE
+    >>> from HSDE.agent import HSDE  # run from the repository root
     >>> 
     >>> # Load data
     >>> adata = sc.read_h5ad('data.h5ad')

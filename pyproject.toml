@@ -8,7 +8,7 @@ version = "0.6.1"
 description = "LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE for single-cell omics analysis"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {file = "LICENSE"}
+license = {text = "MIT"}
 authors = [
   { name = "Zeyu Fu", email = "fuzeyu99@126.com" }
 ]
@@ -69,6 +69,7 @@ dev = [
 Homepage = "https://github.com/PeterPonyu/Liora"
 Repository = "https://github.com/PeterPonyu/Liora"
 Issues = "https://github.com/PeterPonyu/Liora/issues"
+Paper = "https://doi.org/10.3389/fgene.2026.1838613"
 Documentation = "https://github.com/PeterPonyu/Liora#readme"
 
 [tool.setuptools]

@@ -1,5 +1,5 @@
 """
-Setup script for Liora package.
+Setup script for the laior package.
 
 For modern pip installations, pyproject.toml is used.
 This file exists for backward compatibility.

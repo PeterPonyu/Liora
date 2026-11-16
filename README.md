@@ -4,7 +4,8 @@ PyTorch package for single-cell omics analysis with geometric regularization, op
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![PyPI](https://img.shields.io/pypi/v/laior)](https://pypi.org/project/laior/)
+[![PyPI](https://img.shields.io/pypi/v/laior.svg)](https://pypi.org/project/laior/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24267219.svg)](https://doi.org/10.5281/zenodo.24267219)
 
 LAIOR (Lorentz Attentive Interpretable ODE Regularized VAE) is a PyTorch-based package for single-cell RNA-seq and ATAC-seq analysis on AnnData objects. It learns low-dimensional embeddings from **raw count matrices** using count-likelihood objectives (NB/ZINB/Poisson/ZIP) and supports Lorentz regularization, an information bottleneck, optional Neural ODE dynamics, and transformer-based encoders.
 
@@ -38,6 +39,8 @@ git clone https://github.com/PeterPonyu/Liora.git
 cd Liora
 pip install -e .
 ```
+
+> Note: From version 0.6.0 the package and import name are `laior`. The `liora` project on PyPI is archived at 0.4.4 and no longer updated. The `Liora` class name remains available as an alias of `LAIOR`.
 
 ## Quick Start
 
@@ -202,11 +205,11 @@ GitHub's "Cite this repository" button reads the same record from `CITATION.cff`
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](https://github.com/PeterPonyu/Liora/blob/main/LICENSE) file for details.
 
 ## Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! See [CONTRIBUTING.md](https://github.com/PeterPonyu/Liora/blob/main/CONTRIBUTING.md) for guidelines.
 
 ## Support
 

@@ -3,6 +3,6 @@ include LICENSE
 include pyproject.toml
 recursive-include laior *.py
 prune laior/tests
-prune liora/examples
+prune laior/examples
 global-exclude __pycache__
 global-exclude *.py[co]

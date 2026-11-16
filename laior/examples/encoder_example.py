@@ -1,8 +1,7 @@
 """
 Small example to demonstrate the attention-based encoder.
-Run from repository root with:
+Run from the repository root with:
 
-cd /home/zeyufu/LAB/Liora
 python -m laior.examples.encoder_example
 
 """

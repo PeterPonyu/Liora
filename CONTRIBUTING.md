@@ -1,12 +1,12 @@
-# Contributing to Liora
+# Contributing to LAIOR
 
-Thank you for your interest in contributing to Liora!
+Thank you for your interest in contributing to LAIOR!
 
 ## Development Setup
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/zeyufu/Liora.git
+git clone https://github.com/PeterPonyu/Liora.git
 cd Liora
 ```
 
@@ -26,8 +26,8 @@ pytest
 - We use isort for import sorting
 - Run formatters before committing:
 ```bash
-black Liora/
-isort Liora/
+black laior/
+isort laior/
 ```
 
 ## Pull Request Process
