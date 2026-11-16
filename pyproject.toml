@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "laior"
-version = "0.6.1"
+version = "0.6.2"
 description = "LAIOR: Lorentz Attentive Interpretable ODE Regularized VAE for single-cell omics analysis"
 readme = "README.md"
 requires-python = ">=3.9"

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-11-16
+
+### Fixed
+- The source distribution no longer includes `laior/examples`; the `MANIFEST.in` prune rule still named the old package directory
+
+### Documentation
+- README notes that the `liora` project on PyPI is archived at 0.4.4 and that the `Liora` class name remains an alias of `LAIOR`
+- License metadata reads MIT instead of the full license text, and the article DOI is listed among the project URLs
+- CONTRIBUTING uses the current package name and repository URL
+
 ## [0.6.1] - 2026-11-15
 
 ### Fixed
