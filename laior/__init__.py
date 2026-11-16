@@ -4,4 +4,4 @@ from .agent import LAIOR
 Liora = LAIOR
 
 __all__ = ['LAIOR', 'Liora']
-__version__ = '0.6.0'
+__version__ = '0.6.1'
